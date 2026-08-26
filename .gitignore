@@ -1,0 +1,39 @@
+# Environment
+.env
+
+# Generated data (regenerable — never hand-edited)
+data/raw/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.egg
+
+# Node / dashboard
+node_modules/
+dashboard/dist/
+dashboard/.vite/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing / coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Logs
+*.log
