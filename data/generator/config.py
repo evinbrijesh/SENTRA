@@ -46,10 +46,14 @@ RING_TXN_MAX = 200
 # ── Device / IP sharing (normal accounts) ─────────────────────
 # Fraction of normal accounts that share a device with ≥1 other account
 # (simulates shared wifi, family devices — legitimate overlap)
-NORMAL_DEVICE_SHARING_PROB = 0.08
+NORMAL_DEVICE_SHARING_PROB = 0.04
 
 # Fraction of normal accounts that share an IP with ≥1 other account
-NORMAL_IP_SHARING_PROB = 0.10
+# Kept low to avoid creating giant connected components
+NORMAL_IP_SHARING_PROB = 0.04
+
+# Max accounts per shared device/IP group (prevents one IP connecting 50+ accounts)
+NORMAL_SHARED_GROUP_MAX = 3
 
 # ── Referral chains (normal accounts) ─────────────────────────
 # Probability that a normal account was referred by another normal account
@@ -65,6 +69,12 @@ RING_SHARED_IP_PROB = 0.75
 # Referral density within ring: probability that any two ring accounts
 # are connected by a referral edge (creates dense closed-loop chain)
 RING_REFERRAL_DENSITY = 0.30
+
+# Ring fallback devices (accounts NOT on the shared device) use a disjoint
+# ID range from normal-account devices — a collision here would fake a
+# shared-device edge between a ring member and a random normal account
+RING_DEVICE_ID_MIN = 10000
+RING_DEVICE_ID_MAX = 19999
 
 # ── Payment methods ───────────────────────────────────────────
 # ~70% UPI, ~30% masked cards

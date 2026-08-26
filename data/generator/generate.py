@@ -24,13 +24,18 @@ from data.generator.config import (
     DEVICE_PREFIX,
     IP_PREFIX,
     TXN_PREFIX,
+    NORMAL_DEVICE_SHARING_PROB,
+    NORMAL_IP_SHARING_PROB,
     NORMAL_KYC_WEIGHTS,
     NORMAL_REFERRAL_PROB,
+    NORMAL_SHARED_GROUP_MAX,
     NORMAL_TXN_MAX,
     NORMAL_TXN_MIN,
     NUM_RINGS,
     RING_BURST_MINUTES_MAX,
     RING_BURST_MINUTES_MIN,
+    RING_DEVICE_ID_MAX,
+    RING_DEVICE_ID_MIN,
     RING_KYC_WEIGHTS,
     RING_REFERRAL_DENSITY,
     RING_SHARED_DEVICE_PROB,
@@ -162,24 +167,35 @@ def _generate_ring_accounts(start_seq: int, ring_id: int) -> tuple[pd.DataFrame,
 def _assign_devices(accounts: pd.DataFrame, normal_count: int) -> pd.DataFrame:
     """Assign device IDs. Ring accounts get shared devices from ring meta."""
     device_ids = []
-    device_pool = [_id(DEVICE_PREFIX, i) for i in range(1, 500)]
 
-    # Assign devices to normal accounts first
     for i, row in accounts.iterrows():
         if row["is_ring"]:
-            device_ids.append(row.get("_shared_device") or random.choice(device_pool))
+            # Fallback device from the disjoint ring range — must never
+            # collide with normal-account devices (would fake a shared edge)
+            device_ids.append(
+                row.get("_shared_device")
+                or _id(DEVICE_PREFIX, random.randint(RING_DEVICE_ID_MIN, RING_DEVICE_ID_MAX))
+            )
         else:
             device_ids.append(_id(DEVICE_PREFIX, i + 1))
 
     accounts["device_id"] = device_ids
 
-    # Introduce legitimate device overlap among normal accounts
-    normal_indices = accounts[~accounts["is_ring"]].index
-    num_overlap = int(len(normal_indices) * 0.05)
-    overlap_indices = random.sample(list(normal_indices), min(num_overlap, len(normal_indices)))
-    shared_normal_device = _id(DEVICE_PREFIX, random.randint(1, 499))
-    for idx in overlap_indices:
-        accounts.at[idx, "device_id"] = shared_normal_device
+    # Introduce legitimate device overlap in small groups (2-3 accounts)
+    # Prevents one device connecting too many accounts
+    normal_indices = list(accounts[~accounts["is_ring"]].index)
+    random.shuffle(normal_indices)
+    num_overlap = int(len(normal_indices) * NORMAL_DEVICE_SHARING_PROB)
+    overlap_indices = normal_indices[:num_overlap]
+
+    # Create small groups sharing a device
+    group_max = NORMAL_SHARED_GROUP_MAX
+    for start in range(0, len(overlap_indices), group_max):
+        group = overlap_indices[start:start + group_max]
+        if len(group) >= 2:
+            shared_device = _id(DEVICE_PREFIX, random.randint(1, 499))
+            for idx in group:
+                accounts.at[idx, "device_id"] = shared_device
 
     return accounts
 
@@ -196,13 +212,20 @@ def _assign_ips(accounts: pd.DataFrame) -> pd.DataFrame:
 
     accounts["ip_address"] = ip_ids
 
-    # Introduce legitimate IP overlap among normal accounts (shared wifi)
-    normal_indices = accounts[~accounts["is_ring"]].index
-    num_overlap = int(len(normal_indices) * 0.06)
-    overlap_indices = random.sample(list(normal_indices), min(num_overlap, len(normal_indices)))
-    shared_normal_ip = _random_ip()
-    for idx in overlap_indices:
-        accounts.at[idx, "ip_address"] = shared_normal_ip
+    # Introduce legitimate IP overlap in small groups (2-3 accounts)
+    # Simulates shared wifi — small clusters, not one IP for 50 accounts
+    normal_indices = list(accounts[~accounts["is_ring"]].index)
+    random.shuffle(normal_indices)
+    num_overlap = int(len(normal_indices) * NORMAL_IP_SHARING_PROB)
+    overlap_indices = normal_indices[:num_overlap]
+
+    group_max = NORMAL_SHARED_GROUP_MAX
+    for start in range(0, len(overlap_indices), group_max):
+        group = overlap_indices[start:start + group_max]
+        if len(group) >= 2:
+            shared_ip = _random_ip()
+            for idx in group:
+                accounts.at[idx, "ip_address"] = shared_ip
 
     return accounts
 
@@ -360,11 +383,16 @@ def _build_ground_truth(
     }
 
 
-def generate(output_dir: str = None):
+def generate(output_dir: str = None, seed: int | None = None, labels_filename: str = "ground_truth.json"):
     """Main generation entry point."""
     if output_dir is None:
         output_dir = str(Path(__file__).parent.parent / "raw")
     labels_dir = str(Path(__file__).parent.parent / "labels")
+
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
+        Faker.seed(seed)
 
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(labels_dir, exist_ok=True)
@@ -379,7 +407,6 @@ def generate(output_dir: str = None):
     # Pre-generate rings to know how many normal accounts we need
     seq = 1
     for ring_id in range(1, NUM_RINGS + 1):
-        # Estimate ring size to calculate remaining normal accounts
         est_ring_size = (RING_SIZE_MIN + RING_SIZE_MAX) // 2
         ring_df, meta = _generate_ring_accounts(seq, ring_id)
         ring_dfs.append(ring_df)
@@ -398,11 +425,9 @@ def generate(output_dir: str = None):
     for i in range(len(accounts)):
         accounts.at[i, "account_id"] = _id(ACCOUNT_PREFIX, i + 1)
 
-    # Update ring member lists with new IDs
-    # Build mapping from old to new
-    old_to_new = {}
-    for _, row in accounts.iterrows():
-        old_to_new[row["_old_id"] if "_old_id" in row.index else row["account_id"]] = row["account_id"]
+    # Capture stats before any column drops
+    normal_now = int(accounts[~accounts["is_ring"]].shape[0])
+    ring_now = int(accounts[accounts["is_ring"]].shape[0])
 
     # 2. Assign devices and IPs
     accounts = _assign_devices(accounts, normal_count)
@@ -417,10 +442,16 @@ def generate(output_dir: str = None):
     devices_table = _generate_devices_table(accounts)
     ips_table = _generate_ips_table(accounts)
 
-    # 5. Clean up internal columns
-    accounts = accounts.drop(columns=["_shared_device", "_shared_ip"], errors="ignore")
+    # 5. Build ground truth (while is_ring/ring_id columns are still present)
+    ground_truth = _build_ground_truth(accounts, ring_metas)
 
-    # 6. Write CSVs
+    # 6. Drop labels + internal columns from accounts before writing CSV
+    accounts = accounts.drop(
+        columns=["is_ring", "ring_id", "_shared_device", "_shared_ip"],
+        errors="ignore",
+    )
+
+    # 7. Write CSVs
     accounts.to_csv(os.path.join(output_dir, "accounts.csv"), index=False)
     devices_table.to_csv(os.path.join(output_dir, "devices.csv"), index=False)
     ips_table.to_csv(os.path.join(output_dir, "ips.csv"), index=False)
@@ -428,19 +459,18 @@ def generate(output_dir: str = None):
     transactions.to_csv(os.path.join(output_dir, "transactions.csv"), index=False)
     referrals.to_csv(os.path.join(output_dir, "referrals.csv"), index=False)
 
-    # 7. Write ground truth
-    ground_truth = _build_ground_truth(accounts, ring_metas)
-    with open(os.path.join(labels_dir, "ground_truth.json"), "w") as f:
+    # 8. Write ground truth JSON
+    with open(os.path.join(labels_dir, f"{labels_filename}.json"), "w") as f:
         json.dump(ground_truth, f, indent=2)
 
-    # 8. Print summary
+    # 9. Print summary
     print(f"\nGenerated {len(accounts)} accounts:")
-    print(f"  Normal: {len(accounts[~accounts['is_ring']])}")
-    print(f"  Ring accounts: {len(accounts[accounts['is_ring']])}")
+    print(f"  Normal: {normal_now}")
+    print(f"  Ring accounts: {ring_now}")
     print(f"  Rings: {NUM_RINGS}")
     for meta in ring_metas:
         print(f"    Ring {meta['ring_id']}: {meta['size']} accounts, "
-              f"burst {meta['burst_start']} → {meta['burst_end']}")
+              f"burst {meta['burst_start']} -> {meta['burst_end']}")
     print(f"\nTransactions: {len(transactions)}")
     print(f"Referrals: {len(referrals)}")
     print(f"  Normal: {len(referrals[~referrals['is_ring_referral']])}")
@@ -449,9 +479,10 @@ def generate(output_dir: str = None):
     print(f"  UPI: {len(payment_methods[payment_methods['payment_method_type'] == 'UPI'])}")
     print(f"  CARD: {len(payment_methods[payment_methods['payment_method_type'] == 'CARD'])}")
     print(f"\nFiles written to: {output_dir}/")
-    print(f"Ground truth written to: {labels_dir}/ground_truth.json")
+    print(f"Ground truth written to: {labels_dir}/{labels_filename}.json")
 
 
 if __name__ == "__main__":
     output = sys.argv[1] if len(sys.argv) > 1 else None
-    generate(output)
+    labels_fn = sys.argv[2] if len(sys.argv) > 2 else "ground_truth.json"
+    generate(output, labels_filename=labels_fn)
