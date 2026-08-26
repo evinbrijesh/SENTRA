@@ -9,16 +9,16 @@
 
 **Goal:** Working generator that outputs labeled CSVs.
 
-- [ ] Create full directory structure per PRD Section 13
-- [ ] `docker-compose.yml` stub (Postgres + Neo4j services only, no API/dashboard yet)
-- [ ] `data/generator/config.py` — ring size range, count, time-window params, seed
-- [ ] `data/generator/generate.py` — generates ~500 accounts:
+- [x] Create full directory structure per PRD Section 13
+- [x] `docker-compose.yml` stub (Postgres + Neo4j services only, no API/dashboard yet)
+- [x] `data/generator/config.py` — ring size range, count, time-window params, seed
+- [x] `data/generator/generate.py` — generates ~500 accounts:
   - Normal accounts: organic signup spread, own devices/IPs, some legitimate overlap, sparse non-cyclic referrals, small transactions
   - Injects 2–3 rings (10–30 accounts each): tight signup window, shared device/IP, dense closed-loop referrals, one small transaction per account
   - Writes CSVs to `data/raw/` (accounts, devices, ips, payment_methods, transactions, referrals)
   - Writes `data/labels/ground_truth.json` (ring membership labels)
-- [ ] Manually inspect CSVs — tune `config.py` until rings are "detectable but not too obvious"
-- [ ] Verify normal accounts have some legitimate device/IP overlap (critical for honest false-positive cost)
+- [x] Manually inspect CSVs — tune `config.py` until rings are "detectable but not too obvious"
+- [x] Verify normal accounts have some legitimate device/IP overlap (critical for honest false-positive cost)
 
 **Deliverable:** Labeled CSVs + ground truth, inspectable and resettable.
 
@@ -28,14 +28,14 @@
 
 **Goal:** Graph queries + scoring that flags rings offline, no DB needed.
 
-- [ ] `detection/graph_queries.py` — build graph from CSVs (NetworkX):
+- [x] `detection/graph_queries.py` — build graph from CSVs (NetworkX):
   - Connected components on shared device/IP/referral edges
   - Detect referral cycles within components
   - Compute component density, size
-- [ ] `detection/temporal.py` — signup-time clustering score per component
-- [ ] `detection/scoring.py` — combine structural + temporal + cycle signals into ring score (rule-based weights)
-- [ ] `detection/explain.py` — for each flagged ring, output: shared devices/IPs, referral subgraph, signup time window
-- [ ] Run detection against generated CSVs, eyeball output — are the right clusters flagged? Are legitimate overlaps not flagged?
+- [x] `detection/temporal.py` — signup-time clustering score per component
+- [x] `detection/scoring.py` — combine structural + temporal + cycle signals into ring score (rule-based weights)
+- [x] `detection/explain.py` — for each flagged ring, output: shared devices/IPs, referral subgraph, signup time window
+- [x] Run detection against generated CSVs, eyeball output — are the right clusters flagged? Are legitimate overlaps not flagged?
 
 **Deliverable:** Offline detection pipeline that reads CSVs and outputs scored, explained rings.
 

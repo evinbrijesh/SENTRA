@@ -3,6 +3,7 @@
 
 # Generated data (regenerable — never hand-edited)
 data/raw/
+data/raw_test/
 
 # Python
 __pycache__/
