@@ -22,7 +22,7 @@ Per the buildathon track requirements, we treat these as hard requirements, not 
 
 ## 3. Goals
 
-1. Detect injected fraud rings in synthetic data with high recall and acceptable precision, measured honestly on a held-out split.
+1. Detect injected fraud rings using a trained ML classifier (RandomForest / XGBoost) on graph-structural features, with high recall and acceptable precision measured honestly on a held-out split.
 2. Make every flag explainable: which shared device/IP, which referral subgraph, which timing anomaly triggered it.
 3. Ship a real (if minimal) service architecture — not just a notebook — so the graph store, transactional store, and detection logic are separated the way they'd be in production.
 4. Stay demoable at every stage: if we run out of time, whatever's done still runs end-to-end on a smaller scope.
@@ -67,7 +67,10 @@ Per the buildathon track requirements, we treat these as hard requirements, not 
         │  - graph queries: connected components on   │
         │    shared device/IP, referral cycle density  │
         │  - temporal features: signup clustering      │
-        │  - scoring: rule + simple ML combination     │
+        │  - feature extraction: structural + temporal │
+        │  - ML classifier: trained RandomForest/      │
+        │    XGBoost on component-level features       │
+        │  - explainability: feature importance + SHAP │
         └───────────────────┬───────────────────────┘
                              ▼
                   ┌────────────────────────────────┐
@@ -126,18 +129,149 @@ Postgres holds the row-level truth (accounts, transactions, KYC). Neo4j holds th
 
 ## 9. Detection Approach
 
-1. **Structural signal:** connected-components / community detection on the account graph (edges = shared device, shared IP, referral link). Rings show up as unusually dense, small, tightly-connected subgraphs.
-2. **Temporal signal:** signup-time clustering within a candidate component (tight window = suspicious).
-3. **Cycle signal:** closed-loop referral structure within a component (organic referral trees don't cycle back).
-4. **Transaction camouflage check:** confirm the "one small legitimate-looking transaction per account" pattern doesn't already get caught by naive per-transaction rules, and show that Sentra catches it via structure instead.
-5. **Scoring:** combine the above into a ring score (start rule-based/weighted for explainability and speed to build; a simple ML classifier on component-level features is the stretch upgrade if time allows).
-6. **Explainability:** every flagged ring returns the specific shared device/IP, the referral subgraph, and the signup time window that triggered it — this is what turns a score into an audit trail.
+The detection engine uses a **trained ML classifier** (not rule-based heuristics) to score whether a connected component in the account graph is a fraud ring. This makes Sentra a genuine AI system: the model learns ring patterns from labeled synthetic data and generalizes to new, unseen components.
+
+### 9.1 Pipeline Overview
+
+```
+CSVs → build graph → find connected components → extract features per component → ML classifier → flagged rings
+                                                              ↑
+                                                    trained offline via
+                                                    detection/train.py
+```
+
+### 9.2 Graph Construction (`detection/graph_queries.py`)
+
+Build an undirected graph from CSVs:
+- **Nodes** = accounts (with signup_time, kyc_status attributes)
+- **Edges** = shared device, shared IP, or referral link (edge attributes track *why* two accounts are connected — for explainability)
+- A separate directed referral graph is preserved for cycle detection (undirected graph loses referral direction)
+
+### 9.3 Feature Extraction (`detection/features.py`)
+
+For each connected component, extract a fixed-width feature vector:
+
+| Feature | Source | Description |
+|---|---|---|
+| `size` | graph | Number of accounts in component |
+| `density` | graph | edges / max_possible_edges (0–1) |
+| `unique_devices` | graph | Count of distinct devices |
+| `unique_ips` | graph | Count of distinct IPs |
+| `device_concentration` | derived | unique_devices / size (lower = more suspicious) |
+| `ip_concentration` | derived | unique_ips / size (lower = more suspicious) |
+| `shared_device_edges` | graph | Edges caused by shared device |
+| `shared_ip_edges` | graph | Edges caused by shared IP |
+| `referral_edges` | graph | Edges caused by referrals |
+| `referral_density` | derived | referral_edges / max_possible_edges |
+| `has_referral_cycle` | graph | Boolean — closed-loop referral chain exists |
+| `temporal_score` | temporal | Signup time clustering (exponential decay, 0–1) |
+| `burst_minutes` | temporal | Duration of signup window in minutes |
+
+All features are numeric, no encoding needed. The feature vector is 13-dimensional.
+
+### 9.4 Temporal Signal (`detection/temporal.py`)
+
+Measures how tightly clustered signup times are within a candidate component:
+- **Exponential decay** with configurable half-life (default 360 minutes)
+- Accounts signing up within minutes score near 1.0; spread over days score near 0.0
+- **Cluster-aware mode:** for contaminated components (ring + normal accounts pulled in via shared edges), scores only the dominant cluster (accounts sharing the most common device/IP) rather than all members
+
+### 9.5 ML Classifier (`detection/train.py`)
+
+**Models tested:** Both RandomForest and XGBoost are trained and compared. The model with higher AUC-ROC on the dev set is selected as the production classifier.
+
+**Why tree-based models:**
+- Native **feature importance** — every prediction is explainable by ranking which features contributed most
+- **SHAP values** provide per-prediction breakdown of feature contributions (additive explanations)
+- Work well with small datasets (~20–30 components from ~500 accounts)
+- Fast training, no GPU required
+- No feature scaling needed
+
+**Training procedure:**
+1. Generate synthetic data (or load existing CSVs)
+2. Build graph, find components, extract features via `detection/features.py`
+3. Label components using `data/labels/ground_truth.json` (1 = ring, 0 = legitimate)
+4. Split at **component level** (not account level) to prevent data leakage
+5. Train both RandomForest and XGBoost on dev set with simple grid search:
+   - RandomForest: `n_estimators` [100, 200, 500], `max_depth` [5, 10, 20, None], `min_samples_split` [2, 5, 10]
+   - XGBoost: `n_estimators` [100, 200], `max_depth` [3, 5, 7], `learning_rate` [0.01, 0.1, 0.2]
+6. Evaluate both on dev set, select winner by AUC-ROC
+7. Save winning model to `detection/model/ring_classifier.joblib`
+
+**Inference:** `detection/scoring.py` loads the trained model and calls `model.predict_proba()` on feature vectors. The positive class probability becomes the ring score (0.0–1.0).
+
+### 9.6 Explainability (`detection/explain.py`)
+
+Every flagged ring must answer "why was this flagged?" — this is a first-class requirement, not an afterthought.
+
+**Two layers of explainability:**
+
+1. **Feature importance ranking** — which signals contributed most to the score (e.g., "device_concentration was the #1 factor at 0.35 contribution")
+2. **SHAP values** — per-prediction additive explanation showing exactly how each feature pushed the score up or down from the baseline
+3. **Plain-language reasons** — human-readable audit trail:
+   - Shared device/IP details (which devices, how many accounts)
+   - Signup time window (burst_start → burst_end, duration in minutes)
+   - Referral cycle presence
+   - Referral density compared to organic patterns
+
+### 9.7 Baseline Comparison
+
+The rule-based scoring (weighted heuristic in `detection/scoring.py`) is retained as a baseline for comparison:
+- Same features, same train/dev/test split
+- Compared on precision, recall, F1, and AUC-ROC
+- If the ML model underperforms the baseline, the baseline becomes primary
+- Results are reported in the evaluation output
+
+### 9.8 Scoring & Flagging
+
+A component is flagged as a suspected ring if:
+- ML model's positive class probability >= threshold (tuned on dev split), **AND**
+- Either temporal score >= 0.30 (signup burst present) **OR** referral cycle detected (strong independent signal)
+
+The temporal gate prevents false-positive clusters of normal accounts that share a device/IP (e.g., family wifi) but have no signup burst. The referral cycle bypass exists because organic referral trees never cycle back — a cycle is a strong independent signal regardless of other features.
 
 ## 10. Evaluation Plan
 
-- **Metrics:** precision, recall, F1 on the held-out test set, at the ring level (did we correctly flag the injected ring as a unit) and at the account level (did we correctly flag its members).
-- **False-positive cost:** report how many legitimate accounts with shared-wifi/family-device overlap get incorrectly swept into a flagged ring, and frame this as review-effort cost, not just a raw count.
-- **Threshold tuning:** done only on the dev split; test split numbers reported once, unchanged.
+### 10.1 Core Metrics (reported on held-out test set)
+
+- **Precision, Recall, F1** — at both the ring level (did we correctly flag the injected ring as a unit) and the account level (did we correctly flag its members).
+- **AUC-ROC** — threshold-independent measure of model separation between ring and legitimate components. More informative than precision/recall alone for comparing models.
+- **Confusion matrix** — TP, FP, FN, TN counts at the component level. Makes false-positive and false-negative costs tangible.
+
+### 10.2 Model Comparison
+
+Both the ML classifier (winner of RandomForest vs XGBoost) and the rule-based baseline are evaluated on the same held-out test set:
+
+| Metric | ML Classifier | Rule-Based Baseline |
+|---|---|---|
+| Ring-level precision | | |
+| Ring-level recall | | |
+| Ring-level F1 | | |
+| Account-level precision | | |
+| Account-level recall | | |
+| Account-level F1 | | |
+| AUC-ROC | | |
+| False-positive count | | |
+
+If the ML model underperforms the baseline on any core metric, the baseline becomes primary and the ML model is removed.
+
+### 10.3 Feature Importance & Explainability Audit
+
+- **Feature importance ranking** — which features the model relies on most (should align with domain intuition: device concentration, temporal score, referral density should rank high)
+- **SHAP summary plot** — global view of feature effects on predictions
+- **Per-prediction SHAP breakdown** — for each flagged ring, show exactly which features pushed the score up (this feeds into the explanation panel in the dashboard)
+
+### 10.4 False-Positive Cost
+
+- Report how many legitimate accounts with shared-wifi/family-device overlap get incorrectly swept into a flagged ring
+- Frame as **review-effort cost** (how many analyst hours to manually clear false positives), not just a raw count
+- This is critical for honest evaluation — a detector that flags every shared IP would have 100% recall but unacceptable false-positive cost
+
+### 10.5 Threshold Tuning
+
+- Done **only on the dev split** using precision-recall curve to find optimal threshold
+- Test split numbers reported once, unchanged — no post-hoc tuning on test
+- The threshold that maximizes F1 on the dev split is locked in for test evaluation
 
 ## 11. Dashboard & UI Scope
 
@@ -177,9 +311,9 @@ Structured logging so that when something breaks during the demo or in front of 
 
 ## 14. Build Priority Order (demoable at every stage)
 
-1. **Core detection logic** — generator → CSVs → graph queries → ring scoring, all runnable locally/offline, no services yet. This alone proves the idea and produces the precision/recall numbers.
+1. **Core detection logic** — generator → CSVs → graph queries → feature extraction → ML training → scoring, all runnable locally/offline, no services yet. This alone proves the idea and produces the precision/recall/AUC numbers.
 2. **Wrap in real services** — Docker Compose with Postgres + Neo4j, loader script, FastAPI layer exposing `/rings`.
-3. **Extras** — minimal dashboard/subgraph visualization, ML scoring upgrade, polish for the pitch video.
+3. **Extras** — minimal dashboard/subgraph visualization, SHAP integration, polish for the pitch video.
 
 Daily course-correction: if a day runs long, whatever's furthest along in this order is still a complete, demoable slice.
 
@@ -212,12 +346,14 @@ sentra/
 │
 ├── detection/
 │   ├── graph_queries.py       # Cypher: connected components, referral cycles, shared device/IP
+│   ├── features.py            # Feature extraction: builds 13-dim feature vector per component
 │   ├── temporal.py            # signup-clustering scoring
-│   ├── scoring.py             # combines signals into a ring score — isolated from the API
-│   │                          #   layer so it's directly unit-testable against ground_truth.json
-│   └── explain.py             # turns a flagged ring into the plain-language reason —
-│                              #   this file exists because "explainability" is a named
-│                              #   requirement, not an afterthought bolted onto the API
+│   ├── train.py               # Trains RandomForest + XGBoost, compares, saves winning model
+│   ├── scoring.py             # Loads trained model, predicts on new components, flags rings
+│   │                          #   isolated from the API layer — directly unit-testable against ground_truth.json
+│   ├── explain.py             # Turns a flagged ring into plain-language reason + SHAP breakdown
+│   └── model/                 # Saved model artifacts (gitignored except .gitkeep)
+│       └── .gitkeep
 │
 ├── evaluation/
 │   ├── split.py               # dev/test split logic — lives outside detection/ so it can
@@ -273,3 +409,8 @@ sentra/
 | Time runs out before services layer | Priority order above — core detection alone is a valid demo |
 | Graph queries slow at scale | 500 accounts is small; not a real concern at this scale, revisit only if we grow the dataset |
 | Judges read this as offense-capable (ring construction) | Frame and keep the generator strictly as an internal eval-data tool, never exposed as a product feature; pitch video emphasizes detection, not generation |
+| ML overfits to synthetic data → looks great on dev, fails on test | Held-out test split (never tuned on) + cross-validation on dev set + comparison against rule-based baseline |
+| Model is a black box → fails explainability requirement | Tree-based models provide feature importance natively; SHAP adds per-prediction additive explanations; plain-language reasons in explain.py |
+| Small dataset (~20–30 components) → model can't generalize | RandomForest/XGBoost handle small data well; avoid deep learning; feature engineering extracts meaningful signals from limited samples |
+| Feature leakage between train/test splits | Split at component level (not account level) — no component's features appear in both splits |
+| ML underperforms rule-based baseline | Baseline retained for comparison; if ML loses, baseline becomes primary and ML is removed |

@@ -2,14 +2,17 @@
 Sentra — Ring Scoring Engine
 
 Combines structural, temporal, and referral-cycle signals into a
-single ring score (0.0–1.0) using weighted rules.
+single ring score (0.0–1.0).
 
-This is intentionally rule-based (not ML) for:
-1. Explainability — every score component is traceable
-2. Speed to build — no training data needed
-3. Debuggability — thresholds are human-tunable via config
+Primary approach: loads a trained ML model (RandomForest/XGBoost)
+and predicts on component-level features. The model is trained by
+detection/train.py and saved to detection/model/ring_classifier.joblib.
 
-ML upgrade is the stretch goal if time allows (Day 7+).
+Rule-based scoring is retained as a baseline for comparison. If the
+ML model underperforms the baseline, the baseline becomes primary.
+
+Feature extraction is handled by detection/features.py (13-dim vector).
+Explainability is handled by detection/explain.py (feature importance + SHAP).
 """
 
 import os

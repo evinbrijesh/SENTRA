@@ -15,6 +15,10 @@ build/
 venv/
 *.egg
 
+# ML model artifacts (regenerable via detection/train.py)
+detection/model/*.joblib
+detection/model/*.pkl
+
 # Node / dashboard
 node_modules/
 dashboard/dist/
