@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.env
+.git/
+.pytest_cache/
+data/raw/
+data/raw_test/
+data/raw_hard/
+data/output/
+detection/model/*.joblib
+detection/model/*.pkl
+dashboard/node_modules/
+dashboard/dist/

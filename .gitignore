@@ -47,3 +47,5 @@ htmlcov/
 data/raw_hard/
 # Evaluation outputs (regenerable via evaluation/evaluate.py)
 data/output/
+# Runtime ingest uploads (created by POST /ingest)
+data/uploads/
