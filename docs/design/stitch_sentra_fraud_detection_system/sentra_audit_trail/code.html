@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Sentra AI - Audit Trail</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "tertiary": "#bcc7de",
+                      "inverse-on-surface": "#2f3035",
+                      "primary-container": "#4d8eff",
+                      "on-secondary-container": "#b3b4c1",
+                      "on-error": "#690005",
+                      "surface-dim": "#111318",
+                      "on-secondary": "#2d303a",
+                      "on-background": "#e2e2e8",
+                      "error-container": "#93000a",
+                      "surface-container-high": "#282a2e",
+                      "on-primary-fixed-variant": "#004395",
+                      "secondary-fixed": "#e0e2ef",
+                      "tertiary-fixed-dim": "#bcc7de",
+                      "secondary-fixed-dim": "#c4c6d3",
+                      "on-tertiary": "#263143",
+                      "surface-container-lowest": "#0c0e12",
+                      "on-secondary-fixed-variant": "#444651",
+                      "surface-container": "#1e2024",
+                      "on-tertiary-fixed-variant": "#3c475a",
+                      "inverse-primary": "#005ac2",
+                      "primary-fixed": "#d8e2ff",
+                      "secondary": "#c4c6d3",
+                      "on-primary-fixed": "#001a42",
+                      "primary-fixed-dim": "#adc6ff",
+                      "primary": "#adc6ff",
+                      "on-tertiary-fixed": "#111c2d",
+                      "error": "#ffb4ab",
+                      "surface-tint": "#adc6ff",
+                      "on-error-container": "#ffdad6",
+                      "on-surface-variant": "#c2c6d6",
+                      "tertiary-container": "#8691a7",
+                      "surface-variant": "#333539",
+                      "tertiary-fixed": "#d8e3fb",
+                      "on-secondary-fixed": "#181b25",
+                      "surface-bright": "#37393e",
+                      "surface": "#111318",
+                      "inverse-surface": "#e2e2e8",
+                      "on-primary-container": "#00285d",
+                      "surface-container-low": "#1a1c20",
+                      "on-primary": "#002e6a",
+                      "outline-variant": "#424754",
+                      "outline": "#8c909f",
+                      "secondary-container": "#444651",
+                      "background": "#111318",
+                      "on-tertiary-container": "#1f2a3c",
+                      "on-surface": "#e2e2e8",
+                      "surface-container-highest": "#333539"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "unit": "4px",
+                      "container-padding": "24px",
+                      "gutter": "16px",
+                      "sidebar-width": "260px",
+                      "component-gap": "8px"
+              },
+              "fontFamily": {
+                      "code-sm": [
+                              "JetBrains Mono"
+                      ],
+                      "data-mono": [
+                              "JetBrains Mono"
+                      ],
+                      "display-lg": [
+                              "Inter"
+                      ],
+                      "title-sm": [
+                              "Inter"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ],
+                      "body-sm": [
+                              "Inter"
+                      ],
+                      "headline-md": [
+                              "Inter"
+                      ]
+              },
+              "fontSize": {
+                      "code-sm": [
+                              "11px",
+                              {
+                                      "lineHeight": "14px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "data-mono": [
+                              "13px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.02em",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "display-lg": [
+                              "32px",
+                              {
+                                      "lineHeight": "40px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "title-sm": [
+                              "18px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "body-sm": [
+                              "12px",
+                              {
+                                      "lineHeight": "18px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+    </script>
+<style>
+        .syntax-key { color: #adc6ff; }
+        .syntax-string { color: #ffb4ab; }
+        .syntax-number { color: #bcc7de; }
+        
+        .row-hover:hover {
+            background-color: #1e293b;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body-md h-screen flex overflow-hidden">
+<!-- SideNavBar -->
+<nav class="fixed left-0 top-0 h-full w-[260px] bg-surface-dim dark:bg-surface-dim border-r border-outline-variant flex flex-col h-full py-6 z-20">
+<div class="px-container-padding mb-8">
+<h1 class="text-headline-md font-headline-md text-primary">Sentra AI</h1>
+<p class="text-body-sm font-body-sm text-on-surface-variant mt-1">Fraud Detection</p>
+</div>
+<div class="flex-1 overflow-y-auto">
+<ul class="space-y-1">
+<li>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-high transition-colors active:scale-95 duration-150 text-body-sm font-body-sm" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">dashboard</span>
+                        Dashboard
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-high transition-colors active:scale-95 duration-150 text-body-sm font-body-sm" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">hub</span>
+                        Rings
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-high transition-colors active:scale-95 duration-150 text-body-sm font-body-sm" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">monitoring</span>
+                        Metrics
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 text-primary border-l-2 border-primary bg-secondary-container/10 hover:bg-surface-container-high transition-colors active:scale-95 duration-150 text-body-sm font-body-sm" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">history</span>
+                        Audit Trail
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-high transition-colors active:scale-95 duration-150 text-body-sm font-body-sm" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">upload_file</span>
+                        Upload
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-high transition-colors active:scale-95 duration-150 text-body-sm font-body-sm" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">settings</span>
+                        Settings
+                    </a>
+</li>
+</ul>
+</div>
+<div class="px-container-padding mt-auto flex items-center gap-3">
+<img alt="User profile" class="w-8 h-8 rounded-full object-cover" data-alt="A small, stylized profile avatar of a human investigator in a dark-themed cyber operations center, illuminated by blue screen glare." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAXPj-6_C_TffXslo03du8o9GrpzCcs1ZaC4TfGndLTd5I5ZKXxIUVBgvwwvNh7FG3Q1ueUt7CIwNmu67h6QOS31sHzmMC8J2POagnPy3XryYFC7jDomNqrzAnUVcTNAJUPA0GZ3_IqkpV4-NZSjX-cNMii7GmJMhPs9rj6MR_MFW-F9dcmHWXSHo2hsWVpfhgKTRd_cHbrvqcvyx6hvR7_MOtyuIwsomYupa882F1WyrWzCigFyK_W"/>
+</div>
+</nav>
+<!-- Main Content Area -->
+<div class="flex-1 flex flex-col ml-[260px] relative w-[calc(100%-260px)]">
+<!-- TopNavBar -->
+<header class="fixed top-0 right-0 w-[calc(100%-260px)] h-16 bg-surface/80 backdrop-blur-md border-b border-outline-variant flex justify-between items-center px-container-padding h-full z-10">
+<div class="flex items-center gap-4 text-on-surface-variant focus-within:ring-1 focus-within:ring-primary w-1/3">
+<span class="material-symbols-outlined">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-body-md font-body-md w-full text-on-surface placeholder:text-on-surface-variant" placeholder="Search logs..." type="text"/>
+</div>
+<div class="flex items-center gap-6">
+<span class="text-body-sm font-body-sm text-on-surface-variant flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-emerald-500"></div> System: Operational
+                </span>
+<div class="flex items-center gap-4">
+<button class="text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined">dns</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined">help</span>
+</button>
+</div>
+<button class="bg-[#3B82F6] hover:bg-blue-600 text-white px-4 py-2 rounded text-body-sm font-body-sm transition-colors">
+                    Investigate
+                </button>
+<img alt="Investigator Profile" class="w-8 h-8 rounded-full border border-outline-variant object-cover" data-alt="A small, stylized profile avatar of a human investigator in a dark-themed cyber operations center, illuminated by blue screen glare." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCK8QcImfM3hwhtgfneFGFaC5mYUFSv_8VMZgWcUBfwKowZUCN8FVAKQFi0o1ig8OYyKAsE1BEcYtRdjOQhfid3YLlJMF3K2Bs6xSNIjYEONe1r22VaEu24jTgIT0OzLN1ySL8C015Jb7z5-TCn2od6VWN-eTt7EbkCqka9pFGJJ-iHSWyCoi83O3OHg7WhaqdGU5QT8fqHCL7MuKPGPj9VNXE218twpBqW_4NbIBWEFPtwWWTB68EE"/>
+</div>
+</header>
+<!-- Canvas -->
+<main class="flex-1 overflow-y-auto mt-16 p-container-padding">
+<div class="max-w-7xl mx-auto h-full flex flex-col">
+<!-- Page Header & Filters -->
+<div class="flex justify-between items-end mb-6">
+<div>
+<h2 class="text-display-lg font-display-lg text-on-surface">Audit Trail</h2>
+<p class="text-body-md font-body-md text-on-surface-variant mt-2">Immutable chronological activity log.</p>
+</div>
+<div class="flex gap-4 items-center">
+<div class="flex items-center gap-2 bg-[#0A0C10] border border-[#1E293B] rounded p-1 focus-within:border-primary focus-within:shadow-[0_0_8px_rgba(173,198,255,0.2)] transition-all">
+<span class="material-symbols-outlined text-on-surface-variant px-2 text-sm">filter_alt</span>
+<select class="bg-transparent border-none text-body-sm font-body-sm text-on-surface focus:ring-0 py-1 pl-0 pr-8">
+<option value="all">Action Type: All</option>
+<option value="detection">Detection Run</option>
+<option value="auth">Authentication</option>
+<option value="config">Config Change</option>
+</select>
+</div>
+<div class="flex items-center gap-2 bg-[#0A0C10] border border-[#1E293B] rounded p-1 focus-within:border-primary focus-within:shadow-[0_0_8px_rgba(173,198,255,0.2)] transition-all">
+<span class="material-symbols-outlined text-on-surface-variant px-2 text-sm">person</span>
+<select class="bg-transparent border-none text-body-sm font-body-sm text-on-surface focus:ring-0 py-1 pl-0 pr-8">
+<option value="all">Actor: All</option>
+<option value="system">SYSTEM</option>
+<option value="user">USER</option>
+</select>
+</div>
+<button class="flex items-center gap-2 px-4 py-2 border border-[#1E293B] rounded text-body-sm font-body-sm hover:bg-surface-container-highest transition-colors">
+<span class="material-symbols-outlined text-sm">download</span>
+                            Export CSV
+                        </button>
+</div>
+</div>
+<!-- Log Table (Glassmorphism Container) -->
+<div class="flex-1 bg-[#11141D]/90 backdrop-blur-[8px] border border-[#1E293B] rounded-xl overflow-hidden flex flex-col">
+<!-- Table Header -->
+<div class="grid grid-cols-[1fr_2fr_1fr_1fr_auto] gap-4 px-6 py-3 border-b border-[#1E293B] bg-surface-container-low text-body-sm font-body-sm text-on-surface-variant uppercase tracking-wider">
+<div>Timestamp</div>
+<div>Event</div>
+<div>Actor</div>
+<div>Status</div>
+<div class="w-8"></div>
+</div>
+<!-- Table Body -->
+<div class="flex-1 overflow-y-auto" id="audit-log-body">
+<!-- Row 1 -->
+<div class="border-b border-[#1E293B] row-hover transition-colors group" onclick="toggleDetails('row1-details')">
+<div class="grid grid-cols-[1fr_2fr_1fr_1fr_auto] gap-4 px-6 py-4 items-center cursor-pointer">
+<div class="text-data-mono font-data-mono text-tertiary">2023-10-27T08:14:32Z</div>
+<div class="text-data-mono font-data-mono text-on-surface">Detection Run: Ring-Alpha</div>
+<div class="text-data-mono font-data-mono text-primary">SYSTEM</div>
+<div><span class="px-2 py-0.5 rounded text-[10px] bg-emerald-900/30 text-emerald-400 border border-emerald-800">SUCCESS</span></div>
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors">expand_more</span>
+</div>
+<!-- Expandable Details -->
+<div class="hidden px-6 pb-4 pt-2 bg-[#0A0C10] border-t border-dashed border-[#1E293B]" id="row1-details">
+<pre class="text-code-sm font-code-sm p-4 rounded bg-[#0A0C10] border border-[#1E293B] overflow-x-auto"><code>{
+  <span class="syntax-key">"event_id"</span>: <span class="syntax-string">"evt_8f7d9a2b"</span>,
+  <span class="syntax-key">"type"</span>: <span class="syntax-string">"anomaly_detection"</span>,
+  <span class="syntax-key">"target"</span>: <span class="syntax-string">"ring_alpha_nodes"</span>,
+  <span class="syntax-key">"parameters"</span>: {
+    <span class="syntax-key">"threshold"</span>: <span class="syntax-number">0.92</span>,
+    <span class="syntax-key">"model_version"</span>: <span class="syntax-string">"v2.4.1-rc"</span>,
+    <span class="syntax-key">"features_analyzed"</span>: <span class="syntax-number">1405</span>
+  },
+  <span class="syntax-key">"results"</span>: {
+    <span class="syntax-key">"flagged_entities"</span>: <span class="syntax-number">3</span>,
+    <span class="syntax-key">"execution_time_ms"</span>: <span class="syntax-number">412</span>
+  }
+}</code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+<script>
+        function toggleDetails(id) {
+            const detailsEl = document.getElementById(id);
+            if (detailsEl.classList.contains('hidden')) {
+                detailsEl.classList.remove('hidden');
+                // Could rotate chevron here
+            } else {
+                detailsEl.classList.add('hidden');
+            }
+        }
+    </script>
+</body></html>

@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Metrics &amp; Evaluation - Sentra AI</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "tertiary": "#bcc7de",
+                        "inverse-on-surface": "#2f3035",
+                        "primary-container": "#4d8eff",
+                        "on-secondary-container": "#b3b4c1",
+                        "on-error": "#690005",
+                        "surface-dim": "#111318",
+                        "on-secondary": "#2d303a",
+                        "on-background": "#e2e2e8",
+                        "error-container": "#93000a",
+                        "surface-container-high": "#282a2e",
+                        "on-primary-fixed-variant": "#004395",
+                        "secondary-fixed": "#e0e2ef",
+                        "tertiary-fixed-dim": "#bcc7de",
+                        "secondary-fixed-dim": "#c4c6d3",
+                        "on-tertiary": "#263143",
+                        "surface-container-lowest": "#0c0e12",
+                        "on-secondary-fixed-variant": "#444651",
+                        "surface-container": "#1e2024",
+                        "on-tertiary-fixed-variant": "#3c475a",
+                        "inverse-primary": "#005ac2",
+                        "primary-fixed": "#d8e2ff",
+                        "secondary": "#c4c6d3",
+                        "on-primary-fixed": "#001a42",
+                        "primary-fixed-dim": "#adc6ff",
+                        "primary": "#adc6ff",
+                        "on-tertiary-fixed": "#111c2d",
+                        "error": "#ffb4ab",
+                        "surface-tint": "#adc6ff",
+                        "on-error-container": "#ffdad6",
+                        "on-surface-variant": "#c2c6d6",
+                        "tertiary-container": "#8691a7",
+                        "surface-variant": "#333539",
+                        "tertiary-fixed": "#d8e3fb",
+                        "on-secondary-fixed": "#181b25",
+                        "surface-bright": "#37393e",
+                        "surface": "#111318",
+                        "inverse-surface": "#e2e2e8",
+                        "on-primary-container": "#00285d",
+                        "surface-container-low": "#1a1c20",
+                        "on-primary": "#002e6a",
+                        "outline-variant": "#424754",
+                        "outline": "#8c909f",
+                        "secondary-container": "#444651",
+                        "background": "#111318",
+                        "on-tertiary-container": "#1f2a3c",
+                        "on-surface": "#e2e2e8",
+                        "surface-container-highest": "#333539"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "unit": "4px",
+                        "container-padding": "24px",
+                        "gutter": "16px",
+                        "sidebar-width": "260px",
+                        "component-gap": "8px"
+                    },
+                    "fontFamily": {
+                        "code-sm": ["JetBrains Mono"],
+                        "data-mono": ["JetBrains Mono"],
+                        "display-lg": ["Inter"],
+                        "title-sm": ["Inter"],
+                        "body-md": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "headline-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "code-sm": ["11px", { "lineHeight": "14px", "fontWeight": "400" }],
+                        "data-mono": ["13px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500" }],
+                        "display-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "title-sm": ["18px", { "lineHeight": "24px", "fontWeight": "600" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "body-sm": ["12px", { "lineHeight": "18px", "fontWeight": "400" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .material-symbols-outlined.filled {
+            font-variation-settings: 'FILL' 1;
+        }
+        .glass-panel {
+            background-color: rgba(17, 19, 24, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid #424754;
+        }
+        .chart-grid {
+            background-image: linear-gradient(to right, rgba(66, 71, 84, 0.2) 1px, transparent 1px),
+                              linear-gradient(to bottom, rgba(66, 71, 84, 0.2) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+        .neon-glow {
+            filter: drop-shadow(0 0 8px rgba(173, 198, 255, 0.6));
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body-md antialiased overflow-x-hidden">
+<!-- SideNavBar -->
+<nav class="hidden md:flex flex-col h-full py-6 fixed left-0 top-0 w-[260px] bg-surface-dim border-r border-outline-variant z-50">
+<div class="px-6 mb-8 flex flex-col gap-1">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined filled text-primary text-display-lg" data-icon="policy">policy</span>
+<span class="text-headline-md font-headline-md text-primary">Sentra AI</span>
+</div>
+<span class="text-body-sm font-body-sm text-on-surface-variant">Fraud Detection</span>
+</div>
+<div class="flex-1 flex flex-col gap-1 mt-4">
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-high transition-colors active:scale-95 duration-150" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="text-body-sm font-body-sm">Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-high transition-colors active:scale-95 duration-150" href="#">
+<span class="material-symbols-outlined">hub</span>
+<span class="text-body-sm font-body-sm">Rings</span>
+</a>
+<!-- Active Tab: Metrics -->
+<a class="flex items-center gap-3 px-4 py-3 text-primary border-l-2 border-primary bg-secondary-container/10 hover:bg-surface-container-high transition-colors active:scale-95 duration-150" href="#">
+<span class="material-symbols-outlined filled">monitoring</span>
+<span class="text-body-sm font-body-sm font-semibold">Metrics</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-high transition-colors active:scale-95 duration-150" href="#">
+<span class="material-symbols-outlined">history</span>
+<span class="text-body-sm font-body-sm">Audit Trail</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-high transition-colors active:scale-95 duration-150" href="#">
+<span class="material-symbols-outlined">upload_file</span>
+<span class="text-body-sm font-body-sm">Upload</span>
+</a>
+</div>
+<div class="mt-auto flex flex-col gap-1">
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-high transition-colors active:scale-95 duration-150" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="text-body-sm font-body-sm">Settings</span>
+</a>
+</div>
+</nav>
+<!-- TopNavBar -->
+<header class="hidden md:flex justify-between items-center px-container-padding h-16 fixed top-0 right-0 w-[calc(100%-260px)] bg-surface/80 backdrop-blur-md border-b border-outline-variant z-40">
+<div class="flex items-center w-1/3">
+<div class="flex items-center bg-surface-container rounded-full px-4 py-2 w-full border border-outline-variant focus-within:ring-1 focus-within:ring-primary transition-all">
+<span class="material-symbols-outlined text-on-surface-variant mr-2">search</span>
+<input class="bg-transparent border-none outline-none text-body-sm font-body-sm text-on-surface w-full placeholder-on-surface-variant focus:ring-0" placeholder="Search metrics..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-2 border border-outline-variant rounded-full px-3 py-1 bg-surface-container-low">
+<div class="w-2 h-2 rounded-full bg-tertiary"></div>
+<span class="text-code-sm font-code-sm text-on-surface-variant uppercase tracking-wider">System: Operational</span>
+</div>
+<div class="flex items-center gap-4">
+<button class="text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined">dns</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined">help</span>
+</button>
+</div>
+<button class="bg-primary text-on-primary-container px-4 py-2 rounded-lg text-body-sm font-body-sm font-semibold hover:bg-primary-fixed transition-colors">
+                Investigate
+            </button>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-outline-variant">
+<img alt="Investigator Profile" class="w-full h-full object-cover" data-alt="A small, circular avatar portrait of an investigator in a dimly lit, high-tech control room environment, sharp focus, cool corporate aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuASQaY1WvEgsorL-BhA9Mmc6SsrwRYOWBi0VgoK_NxYIPm4Kz3Eq5-uth_Bzw2u95l6gwfj4YupWB_x8MTQbLX_SUFkLD3vktJWlxRmymLvQS6ihmyUsb6wdTzNDI2Nc6nBkb-wyOUryZFkaw4h3Qu9U8qdUQtlvyQxLOFTETA7VMFU55ylD2wsd3HCPXxqaMY7cZKpTFTY1_fKgpAwQCbMSYQSk6WBwSrnn6A9gAQHqjRXGQK-zk_7"/>
+</div>
+</div>
+</header>
+<!-- Main Content -->
+<main class="ml-0 md:ml-[260px] pt-[64px] min-h-screen p-container-padding flex flex-col gap-gutter">
+<!-- Header & Toggle -->
+<div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 w-full mt-2">
+<div>
+<h1 class="text-headline-md font-headline-md text-on-surface font-bold">Model Evaluation</h1>
+<p class="text-body-sm font-body-sm text-on-surface-variant mt-1">Real-time performance metrics across active detection nodes.</p>
+</div>
+<!-- Toggle Switch -->
+<div class="flex bg-surface-container-highest rounded-lg p-1 border border-outline-variant">
+<button class="px-4 py-1.5 rounded-md text-body-sm font-body-sm font-medium bg-primary text-on-primary-container shadow-sm transition-all">
+                    Ring-level
+                </button>
+<button class="px-4 py-1.5 rounded-md text-body-sm font-body-sm font-medium text-on-surface-variant hover:text-on-surface transition-all">
+                    Account-level
+                </button>
+</div>
+</div>
+<!-- Top: Scorecards -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-gutter w-full">
+<!-- Precision Card -->
+<div class="glass-panel rounded-xl p-6 flex flex-col justify-between items-center relative overflow-hidden group">
+<div class="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+<h3 class="text-title-sm font-title-sm text-on-surface-variant self-start mb-4">Precision</h3>
+<div class="relative w-32 h-32 flex items-center justify-center">
+<svg class="w-full h-full transform -rotate-90" viewbox="0 0 36 36">
+<path class="text-surface-variant" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-width="3"></path>
+<path class="text-primary transition-all duration-1000 ease-out neon-glow" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-dasharray="94.2, 100" stroke-linecap="round" stroke-width="3"></path>
+</svg>
+<div class="absolute flex flex-col items-center">
+<span class="text-display-lg font-display-lg text-on-surface">94<span class="text-title-sm">%</span></span>
+</div>
+</div>
+<div class="flex items-center gap-1 mt-4 text-tertiary">
+<span class="material-symbols-outlined text-[16px]">trending_up</span>
+<span class="text-data-mono font-data-mono text-xs">+1.2% v. prev</span>
+</div>
+</div>
+<!-- Recall Card -->
+<div class="glass-panel rounded-xl p-6 flex flex-col justify-between items-center relative overflow-hidden group">
+<div class="absolute inset-0 bg-tertiary/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+<h3 class="text-title-sm font-title-sm text-on-surface-variant self-start mb-4">Recall</h3>
+<div class="relative w-32 h-32 flex items-center justify-center">
+<svg class="w-full h-full transform -rotate-90" viewbox="0 0 36 36">
+<path class="text-surface-variant" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-width="3"></path>
+<path class="text-tertiary transition-all duration-1000 ease-out drop-shadow-[0_0_8px_rgba(188,199,222,0.5)]" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-dasharray="88.5, 100" stroke-linecap="round" stroke-width="3"></path>
+</svg>
+<div class="absolute flex flex-col items-center">
+<span class="text-display-lg font-display-lg text-on-surface">88<span class="text-title-sm">%</span></span>
+</div>
+</div>
+<div class="flex items-center gap-1 mt-4 text-outline">
+<span class="material-symbols-outlined text-[16px]">trending_flat</span>
+<span class="text-data-mono font-data-mono text-xs">0.0% v. prev</span>
+</div>
+</div>
+<!-- F1-Score Card -->
+<div class="glass-panel rounded-xl p-6 flex flex-col justify-between items-center relative overflow-hidden group">
+<div class="absolute inset-0 bg-secondary/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+<div class="w-full flex justify-between items-center mb-4">
+<h3 class="text-title-sm font-title-sm text-on-surface-variant">F1-Score</h3>
+<span class="px-2 py-0.5 bg-primary/20 text-primary border border-primary/30 rounded text-code-sm font-code-sm uppercase tracking-wide">Target: 90%</span>
+</div>
+<div class="relative w-32 h-32 flex items-center justify-center">
+<svg class="w-full h-full transform -rotate-90" viewbox="0 0 36 36">
+<path class="text-surface-variant" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-width="3"></path>
+<path class="text-secondary transition-all duration-1000 ease-out drop-shadow-[0_0_8px_rgba(196,198,211,0.5)]" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-dasharray="91.2, 100" stroke-linecap="round" stroke-width="3"></path>
+</svg>
+<div class="absolute flex flex-col items-center">
+<span class="text-display-lg font-display-lg text-on-surface">91<span class="text-title-sm">%</span></span>
+</div>
+</div>
+<div class="flex items-center gap-1 mt-4 text-tertiary">
+<span class="material-symbols-outlined text-[16px]">trending_up</span>
+<span class="text-data-mono font-data-mono text-xs">+0.5% v. prev</span>
+</div>
+</div>
+</div>
+<!-- Middle Section: Chart & Confusion Matrix -->
+<div class="grid grid-cols-12 gap-gutter w-full">
+<!-- Precision-Recall Curve -->
+<div class="col-span-12 lg:col-span-8 glass-panel rounded-xl p-6 flex flex-col h-[400px]">
+<div class="flex justify-between items-center mb-4">
+<h3 class="text-title-sm font-title-sm text-on-surface">Precision-Recall Curve</h3>
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-[20px]">more_horiz</span>
+</button>
+</div>
+<div class="flex-1 relative chart-grid border-l border-b border-outline-variant mt-2 mb-6 ml-8">
+<!-- Y Axis Labels -->
+<div class="absolute -left-8 top-0 bottom-0 flex flex-col justify-between text-code-sm font-code-sm text-on-surface-variant h-full pb-0.5">
+<span>1.0</span>
+<span>0.8</span>
+<span>0.6</span>
+<span>0.4</span>
+<span>0.2</span>
+<span>0.0</span>
+</div>
+<!-- X Axis Labels -->
+<div class="absolute -bottom-6 left-0 right-0 flex justify-between text-code-sm font-code-sm text-on-surface-variant px-1">
+<span>0.0</span>
+<span>0.2</span>
+<span>0.4</span>
+<span>0.6</span>
+<span>0.8</span>
+<span>1.0</span>
+</div>
+<!-- SVG Curve -->
+<svg class="absolute inset-0 w-full h-full" preserveaspectratio="none" viewbox="0 0 100 100">
+<!-- Area Fill -->
+<path d="M 0 0 Q 30 5, 60 20 T 100 80 L 100 100 L 0 100 Z" fill="url(#areaGradient)"></path>
+<!-- Line -->
+<path class="text-primary neon-glow" d="M 0 0 Q 30 5, 60 20 T 100 80" fill="none" stroke="currentColor" stroke-width="1.5" vector-effect="non-scaling-stroke"></path>
+<!-- Operating Point Marker -->
+<circle class="text-primary" cx="75" cy="40" fill="#111318" r="3" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"></circle>
+<defs>
+<lineargradient id="areaGradient" x1="0" x2="0" y1="0" y2="1">
+<stop offset="0%" stop-color="rgba(173, 198, 255, 0.15)"></stop>
+<stop offset="100%" stop-color="rgba(173, 198, 255, 0)"></stop>
+</lineargradient>
+</defs>
+</svg>
+<!-- Tooltip approximation -->
+<div class="absolute left-[70%] top-[30%] bg-surface border border-outline-variant px-3 py-2 rounded shadow-lg flex flex-col gap-1 pointer-events-none">
+<span class="text-code-sm font-code-sm text-on-surface-variant">Threshold: 0.65</span>
+<span class="text-data-mono font-data-mono text-primary text-xs">P: 0.94 | R: 0.88</span>
+</div>
+</div>
+</div>
+<!-- Confusion Matrix -->
+<div class="col-span-12 lg:col-span-4 glass-panel rounded-xl p-6 flex flex-col h-[400px]">
+<div class="flex justify-between items-center mb-6">
+<h3 class="text-title-sm font-title-sm text-on-surface">Confusion Matrix</h3>
+<span class="text-code-sm font-code-sm text-on-surface-variant bg-surface-container px-2 py-1 rounded">N=42,891</span>
+</div>
+<div class="flex-1 flex flex-col items-center justify-center pt-4 relative">
+<!-- Matrix Grid -->
+<div class="grid grid-cols-2 grid-rows-2 gap-2 w-full max-w-[240px] aspect-square relative z-10">
+<!-- TP -->
+<div class="bg-primary/20 border border-primary/30 rounded flex flex-col items-center justify-center p-2 group hover:bg-primary/30 transition-colors cursor-default">
+<span class="text-code-sm font-code-sm text-primary uppercase mb-1">True Pos</span>
+<span class="text-title-sm font-title-sm text-on-surface font-data-mono">8,402</span>
+</div>
+<!-- FN -->
+<div class="bg-error/10 border border-error/20 rounded flex flex-col items-center justify-center p-2 group hover:bg-error/20 transition-colors cursor-default">
+<span class="text-code-sm font-code-sm text-error uppercase mb-1">False Neg</span>
+<span class="text-title-sm font-title-sm text-on-surface font-data-mono">1,145</span>
+</div>
+<!-- FP -->
+<div class="bg-error/10 border border-error/20 rounded flex flex-col items-center justify-center p-2 group hover:bg-error/20 transition-colors cursor-default">
+<span class="text-code-sm font-code-sm text-error uppercase mb-1">False Pos</span>
+<span class="text-title-sm font-title-sm text-on-surface font-data-mono">534</span>
+</div>
+<!-- TN -->
+<div class="bg-tertiary/10 border border-tertiary/20 rounded flex flex-col items-center justify-center p-2 group hover:bg-tertiary/20 transition-colors cursor-default">
+<span class="text-code-sm font-code-sm text-tertiary uppercase mb-1">True Neg</span>
+<span class="text-title-sm font-title-sm text-on-surface font-data-mono">32,810</span>
+</div>
+</div>
+<!-- Axes Labels -->
+<div class="absolute -left-6 top-1/2 transform -translate-y-1/2 -rotate-90 text-code-sm font-code-sm text-on-surface-variant tracking-widest uppercase origin-center">Actual Class</div>
+<div class="absolute -bottom-2 left-1/2 transform -translate-x-1/2 text-code-sm font-code-sm text-on-surface-variant tracking-widest uppercase">Predicted Class</div>
+</div>
+</div>
+</div>
+<!-- Bottom: Data Table -->
+<div class="glass-panel rounded-xl flex flex-col w-full overflow-hidden mb-8">
+<div class="p-6 border-b border-outline-variant flex justify-between items-center bg-surface-container-lowest/50">
+<h3 class="text-title-sm font-title-sm text-on-surface">Dataset Performance Comparison</h3>
+<button class="flex items-center gap-2 text-body-sm font-body-sm text-primary hover:text-primary-fixed transition-colors">
+<span class="material-symbols-outlined text-[18px]">download</span>
+                    Export CSV
+                </button>
+</div>
+<div class="w-full overflow-x-auto">
+<table class="w-full text-left border-collapse min-w-[600px]">
+<thead>
+<tr class="bg-surface-container/30 border-b border-outline-variant">
+<th class="py-4 px-6 text-code-sm font-code-sm text-on-surface-variant uppercase tracking-wider font-medium">Dataset split</th>
+<th class="py-4 px-6 text-code-sm font-code-sm text-on-surface-variant uppercase tracking-wider font-medium text-right">Precision</th>
+<th class="py-4 px-6 text-code-sm font-code-sm text-on-surface-variant uppercase tracking-wider font-medium text-right">Recall</th>
+<th class="py-4 px-6 text-code-sm font-code-sm text-on-surface-variant uppercase tracking-wider font-medium text-right">F1-Score</th>
+<th class="py-4 px-6 text-code-sm font-code-sm text-on-surface-variant uppercase tracking-wider font-medium text-right">Review Rate</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/50">
+<tr class="hover:bg-surface-variant/30 transition-colors group">
+<td class="py-4 px-6">
+<div class="flex items-center gap-3">
+<div class="w-2 h-2 rounded-full bg-tertiary"></div>
+<span class="text-body-sm font-body-sm text-on-surface font-medium">Clean Dev</span>
+</div>
+</td>
+<td class="py-4 px-6 text-right font-data-mono text-data-mono text-on-surface">0.965</td>
+<td class="py-4 px-6 text-right font-data-mono text-data-mono text-on-surface">0.942</td>
+<td class="py-4 px-6 text-right font-data-mono text-data-mono text-primary">0.953</td>
+<td class="py-4 px-6 text-right font-data-mono text-data-mono text-on-surface-variant">2.1%</td>
+</tr>
+<tr class="hover:bg-surface-variant/30 transition-colors group">
+<td class="py-4 px-6">
+<div class="flex items-center gap-3">
+<div class="w-2 h-2 rounded-full bg-secondary"></div>
+<span class="text-body-sm font-body-sm text-on-surface font-medium">Clean Test</span>
+</div>
+</td>
+<td class="py-4 px-6 text-right font-data-mono text-data-mono text-on-surface">0.942</td>
+<td class="py-4 px-6 text-right font-data-mono text-data-mono text-on-surface">0.885</td>
+<td class="py-4 px-6 text-right font-data-mono text-data-mono text-primary">0.912</td>
+<td class="py-4 px-6 text-right font-data-mono text-data-mono text-on-surface-variant">2.8%</td>
+</tr>
+<tr class="hover:bg-surface-variant/30 transition-colors group">
+<td class="py-4 px-6">
+<div class="flex items-center gap-3">
+<div class="w-2 h-2 rounded-full bg-error"></div>
+<span class="text-body-sm font-body-sm text-on-surface font-medium">Hard Variant</span>
+</div>
+</td>
+<td class="py-4 px-6 text-right font-data-mono text-data-mono text-on-surface">0.824</td>
+<td class="py-4 px-6 text-right font-data-mono text-data-mono text-on-surface">0.719</td>
+<td class="py-4 px-6 text-right font-data-mono text-data-mono text-error">0.768</td>
+<td class="py-4 px-6 text-right font-data-mono text-data-mono text-on-surface-variant">8.5%</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</main>
+</body></html>

@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Sentra AI - Investigation Queue</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Google Fonts: Inter & JetBrains Mono -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Theme Configuration -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "tertiary": "#bcc7de",
+                        "inverse-on-surface": "#2f3035",
+                        "primary-container": "#4d8eff",
+                        "on-secondary-container": "#b3b4c1",
+                        "on-error": "#690005",
+                        "surface-dim": "#111318",
+                        "on-secondary": "#2d303a",
+                        "on-background": "#e2e2e8",
+                        "error-container": "#93000a",
+                        "surface-container-high": "#282a2e",
+                        "on-primary-fixed-variant": "#004395",
+                        "secondary-fixed": "#e0e2ef",
+                        "tertiary-fixed-dim": "#bcc7de",
+                        "secondary-fixed-dim": "#c4c6d3",
+                        "on-tertiary": "#263143",
+                        "surface-container-lowest": "#0c0e12",
+                        "on-secondary-fixed-variant": "#444651",
+                        "surface-container": "#1e2024",
+                        "on-tertiary-fixed-variant": "#3c475a",
+                        "inverse-primary": "#005ac2",
+                        "primary-fixed": "#d8e2ff",
+                        "secondary": "#c4c6d3",
+                        "on-primary-fixed": "#001a42",
+                        "primary-fixed-dim": "#adc6ff",
+                        "primary": "#adc6ff",
+                        "on-tertiary-fixed": "#111c2d",
+                        "error": "#ffb4ab",
+                        "surface-tint": "#adc6ff",
+                        "on-error-container": "#ffdad6",
+                        "on-surface-variant": "#c2c6d6",
+                        "tertiary-container": "#8691a7",
+                        "surface-variant": "#333539",
+                        "tertiary-fixed": "#d8e3fb",
+                        "on-secondary-fixed": "#181b25",
+                        "surface-bright": "#37393e",
+                        "surface": "#111318",
+                        "inverse-surface": "#e2e2e8",
+                        "on-primary-container": "#00285d",
+                        "surface-container-low": "#1a1c20",
+                        "on-primary": "#002e6a",
+                        "outline-variant": "#424754",
+                        "outline": "#8c909f",
+                        "secondary-container": "#444651",
+                        "background": "#111318",
+                        "on-tertiary-container": "#1f2a3c",
+                        "on-surface": "#e2e2e8",
+                        "surface-container-highest": "#333539"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "unit": "4px",
+                        "container-padding": "24px",
+                        "gutter": "16px",
+                        "sidebar-width": "260px",
+                        "component-gap": "8px"
+                    },
+                    "fontFamily": {
+                        "code-sm": ["JetBrains Mono"],
+                        "data-mono": ["JetBrains Mono"],
+                        "display-lg": ["Inter"],
+                        "title-sm": ["Inter"],
+                        "body-md": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "headline-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "code-sm": ["11px", { "lineHeight": "14px", "fontWeight": "400" }],
+                        "data-mono": ["13px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500" }],
+                        "display-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "title-sm": ["18px", { "lineHeight": "24px", "fontWeight": "600" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "body-sm": ["12px", { "lineHeight": "18px", "fontWeight": "400" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        /* Custom scrollbar for technical aesthetic */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #424754; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #8c909f;
+        }
+        
+        /* Subtle glow utilities */
+        .glow-active {
+            box-shadow: inset 2px 0 0 0 #adc6ff;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body-md h-screen w-full flex overflow-hidden selection:bg-primary-container selection:text-on-primary-container">
+<!-- Shared Component: SideNavBar -->
+<nav class="fixed left-0 top-0 h-full w-[260px] bg-surface-dim border-r border-outline-variant flex flex-col py-6 z-40">
+<!-- Header -->
+<div class="px-6 mb-8 flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-surface-container-highest border border-outline-variant flex items-center justify-center overflow-hidden">
+<span class="material-symbols-outlined text-primary text-xl" style="font-variation-settings: 'FILL' 1;">security</span>
+</div>
+<div>
+<h1 class="text-headline-md font-headline-md text-primary tracking-tight">Sentra AI</h1>
+<p class="text-code-sm font-code-sm text-on-surface-variant uppercase tracking-wider mt-0.5">Fraud Detection</p>
+</div>
+</div>
+<!-- Navigation Tabs -->
+<div class="flex flex-col gap-1 w-full px-2">
+<!-- Dashboard -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-high transition-colors rounded-lg group" href="#">
+<span class="material-symbols-outlined text-xl opacity-80 group-hover:opacity-100 transition-opacity">dashboard</span>
+<span class="text-body-sm font-body-sm">Dashboard</span>
+</a>
+<!-- Rings (ACTIVE) -->
+<a class="flex items-center gap-3 px-4 py-3 text-primary bg-secondary-container/10 border-l-2 border-primary rounded-r-lg group active:scale-95 duration-150" href="#">
+<span class="material-symbols-outlined text-xl" style="font-variation-settings: 'FILL' 1;">hub</span>
+<span class="text-body-sm font-body-sm font-medium">Rings</span>
+</a>
+<!-- Metrics -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-high transition-colors rounded-lg group" href="#">
+<span class="material-symbols-outlined text-xl opacity-80 group-hover:opacity-100 transition-opacity">monitoring</span>
+<span class="text-body-sm font-body-sm">Metrics</span>
+</a>
+<!-- Audit Trail -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-high transition-colors rounded-lg group" href="#">
+<span class="material-symbols-outlined text-xl opacity-80 group-hover:opacity-100 transition-opacity">history</span>
+<span class="text-body-sm font-body-sm">Audit Trail</span>
+</a>
+<!-- Upload -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-high transition-colors rounded-lg group" href="#">
+<span class="material-symbols-outlined text-xl opacity-80 group-hover:opacity-100 transition-opacity">upload_file</span>
+<span class="text-body-sm font-body-sm">Upload</span>
+</a>
+</div>
+<div class="mt-auto px-2">
+<!-- Settings -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-high transition-colors rounded-lg group" href="#">
+<span class="material-symbols-outlined text-xl opacity-80 group-hover:opacity-100 transition-opacity">settings</span>
+<span class="text-body-sm font-body-sm">Settings</span>
+</a>
+</div>
+</nav>
+<!-- Main Content Area Wrapper -->
+<div class="flex-1 ml-[260px] flex flex-col h-full relative">
+<!-- Shared Component: TopNavBar -->
+<header class="fixed top-0 right-0 w-[calc(100%-260px)] h-16 bg-surface/80 backdrop-blur-md border-b border-outline-variant flex justify-between items-center px-container-padding z-30">
+<!-- Left: Search -->
+<div class="flex items-center flex-1 max-w-md">
+<div class="relative w-full flex items-center group focus-within:ring-1 focus-within:ring-primary rounded-lg transition-all duration-200">
+<span class="material-symbols-outlined absolute left-3 text-on-surface-variant group-focus-within:text-primary transition-colors text-lg">search</span>
+<input class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg pl-10 pr-4 py-2 text-body-sm font-body-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary focus:ring-0 transition-colors" placeholder="Search parameters, IDs, or metrics..." type="text"/>
+</div>
+</div>
+<!-- Right: Actions & Profile -->
+<div class="flex items-center gap-6">
+<!-- Status/Secondary -->
+<div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-container-low border border-surface-container-highest">
+<div class="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(173,198,255,0.6)]"></div>
+<span class="text-code-sm font-code-sm text-on-surface-variant uppercase tracking-wider">System: Operational</span>
+</div>
+<!-- Trailing Icons -->
+<div class="flex items-center gap-2">
+<button class="p-2 rounded-lg text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-all">
+<span class="material-symbols-outlined text-xl">notifications</span>
+</button>
+<button class="p-2 rounded-lg text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-all">
+<span class="material-symbols-outlined text-xl">dns</span>
+</button>
+<button class="p-2 rounded-lg text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-all">
+<span class="material-symbols-outlined text-xl">help</span>
+</button>
+</div>
+<div class="w-px h-6 bg-outline-variant"></div>
+<!-- Primary Action & Profile -->
+<div class="flex items-center gap-4">
+<button class="px-4 py-2 bg-surface-container-high border border-outline-variant text-on-surface hover:border-primary hover:text-primary transition-all rounded-lg text-body-sm font-body-sm font-medium flex items-center gap-2">
+<span class="material-symbols-outlined text-lg">travel_explore</span>
+                        Investigate
+                    </button>
+<button class="w-8 h-8 rounded-full bg-surface-container-highest border border-outline-variant overflow-hidden flex items-center justify-center hover:ring-2 hover:ring-primary hover:ring-offset-2 hover:ring-offset-surface transition-all">
+<span class="material-symbols-outlined text-on-surface-variant text-base">person</span>
+</button>
+</div>
+</div>
+</header>
+<!-- Page Canvas (Scrollable) -->
+<main class="flex-1 overflow-y-auto pt-16 w-full">
+<div class="p-container-padding max-w-[1600px] mx-auto w-full flex flex-col gap-6">
+<!-- Page Header & Filters -->
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mt-2">
+<div class="flex flex-col gap-4">
+<h2 class="text-display-lg font-display-lg text-on-surface">Investigation Queue</h2>
+<!-- Filter Chips -->
+<div class="flex flex-wrap items-center gap-2">
+<!-- Status Filter -->
+<div class="flex items-center bg-surface-container-low border border-outline-variant rounded-lg p-1">
+<span class="px-2 text-code-sm font-code-sm text-outline uppercase tracking-wider mr-1">Status</span>
+<button class="px-3 py-1 rounded-md text-body-sm font-body-sm bg-error-container/20 text-error border border-error/30 font-medium transition-colors">Flagged</button>
+<button class="px-3 py-1 rounded-md text-body-sm font-body-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors">Needs Review</button>
+<button class="px-3 py-1 rounded-md text-body-sm font-body-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors">Cleared</button>
+</div>
+<!-- Score Filter -->
+<button class="flex items-center gap-2 px-3 py-1.5 bg-surface-container-low border border-outline-variant rounded-lg text-body-sm font-body-sm text-on-surface-variant hover:border-primary hover:text-primary transition-all">
+<span class="text-code-sm font-code-sm text-outline uppercase tracking-wider">Score</span>
+<span class="font-medium text-on-surface">0.8+</span>
+<span class="material-symbols-outlined text-[16px]">arrow_drop_down</span>
+</button>
+<!-- Date Filter -->
+<button class="flex items-center gap-2 px-3 py-1.5 bg-surface-container-low border border-outline-variant rounded-lg text-body-sm font-body-sm text-on-surface-variant hover:border-primary hover:text-primary transition-all">
+<span class="text-code-sm font-code-sm text-outline uppercase tracking-wider">Date</span>
+<span class="font-medium text-on-surface">Last 24h</span>
+<span class="material-symbols-outlined text-[16px]">arrow_drop_down</span>
+</button>
+</div>
+</div>
+<!-- Top Right Primary Action -->
+<button class="flex items-center gap-2 px-5 py-2.5 bg-primary-container text-on-primary-container hover:bg-primary-container/90 transition-colors rounded-lg font-medium shadow-[0_0_15px_rgba(77,142,255,0.15)] active:scale-95 duration-150 shrink-0">
+<span class="material-symbols-outlined text-[20px]">cloud_upload</span>
+<span class="text-body-md font-body-md font-semibold tracking-wide">Upload Dataset</span>
+</button>
+</div>
+<!-- Main Data Table Container -->
+<div class="w-full bg-[#11141D]/80 backdrop-blur-md border border-outline-variant rounded-xl overflow-hidden shadow-2xl flex flex-col">
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse whitespace-nowrap">
+<thead>
+<tr class="border-b border-outline-variant bg-surface-container-lowest/50">
+<th class="px-5 py-4 text-title-sm font-title-sm text-on-surface-variant font-medium first:pl-6 last:pr-6">
+<div class="flex items-center gap-1 cursor-pointer hover:text-primary transition-colors">Ring ID <span class="material-symbols-outlined text-[14px]">arrow_downward</span></div>
+</th>
+<th class="px-5 py-4 text-title-sm font-title-sm text-on-surface-variant font-medium">Status</th>
+<th class="px-5 py-4 text-title-sm font-title-sm text-on-surface-variant font-medium">
+<div class="flex items-center gap-1 cursor-pointer hover:text-primary transition-colors">Size <span class="material-symbols-outlined text-[14px] opacity-0 group-hover:opacity-100">unfold_more</span></div>
+</th>
+<th class="px-5 py-4 text-title-sm font-title-sm text-on-surface-variant font-medium w-[200px]">
+<div class="flex items-center gap-1 cursor-pointer hover:text-primary transition-colors">Risk Score <span class="material-symbols-outlined text-[14px] opacity-0 group-hover:opacity-100">unfold_more</span></div>
+</th>
+<th class="px-5 py-4 text-title-sm font-title-sm text-on-surface-variant font-medium">Primary Signal</th>
+<th class="px-5 py-4 text-title-sm font-title-sm text-on-surface-variant font-medium first:pl-6 last:pr-6">Detected At</th>
+</tr>
+</thead>
+<tbody class="text-body-md font-body-md divide-y divide-outline-variant/50">
+<!-- Row 1 (High Risk) -->
+<tr class="hover:bg-surface-container-high transition-colors group relative cursor-pointer">
+<td class="px-5 py-4 first:pl-6 last:pr-6">
+<div class="flex items-center gap-3">
+<div class="w-1 h-8 bg-error rounded-full opacity-0 group-hover:opacity-100 transition-opacity absolute left-0"></div>
+<span class="text-data-mono font-data-mono text-primary font-medium tracking-wide">RNG-8492-X</span>
+</div>
+</td>
+<td class="px-5 py-4">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-error-container/20 border border-error/20 text-error text-code-sm font-code-sm font-medium uppercase tracking-wider">
+<span class="w-1.5 h-1.5 rounded-full bg-error animate-pulse"></span> Flagged
+                                        </span>
+</td>
+<td class="px-5 py-4">
+<span class="text-data-mono font-data-mono text-on-surface font-semibold">1,245</span>
+</td>
+<td class="px-5 py-4 w-[200px]">
+<div class="flex items-center gap-3 w-full max-w-[160px]">
+<span class="text-data-mono font-data-mono text-error font-medium w-8">0.96</span>
+<div class="flex-1 h-1.5 bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-error rounded-full shadow-[0_0_8px_rgba(255,180,171,0.5)]" style="width: 96%"></div>
+</div>
+</div>
+</td>
+<td class="px-5 py-4">
+<div class="flex items-center gap-2">
+<div class="flex items-center gap-1.5 px-2 py-1 rounded-md bg-surface-container border border-outline-variant text-on-surface-variant text-code-sm font-code-sm">
+<span class="material-symbols-outlined text-[14px]">router</span> Shared Device
+                                            </div>
+<div class="flex items-center gap-1.5 px-2 py-1 rounded-md bg-surface-container border border-outline-variant text-on-surface-variant text-code-sm font-code-sm">
+<span class="material-symbols-outlined text-[14px]">lan</span> IP Switch
+                                            </div>
+</div>
+</td>
+<td class="px-5 py-4 first:pl-6 last:pr-6 text-data-mono font-data-mono text-on-surface-variant">
+                                        10 min ago
+                                    </td>
+</tr>
+<!-- Row 2 (Medium Risk) -->
+<tr class="hover:bg-surface-container-high transition-colors group relative cursor-pointer">
+<td class="px-5 py-4 first:pl-6 last:pr-6">
+<div class="flex items-center gap-3">
+<div class="w-1 h-8 bg-tertiary rounded-full opacity-0 group-hover:opacity-100 transition-opacity absolute left-0"></div>
+<span class="text-data-mono font-data-mono text-on-surface font-medium tracking-wide">RNG-7731-M</span>
+</div>
+</td>
+<td class="px-5 py-4">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-tertiary-container/10 border border-tertiary/20 text-tertiary-fixed-dim text-code-sm font-code-sm font-medium uppercase tracking-wider">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary-fixed-dim"></span> Review
+                                        </span>
+</td>
+<td class="px-5 py-4">
+<span class="text-data-mono font-data-mono text-on-surface font-semibold">892</span>
+</td>
+<td class="px-5 py-4 w-[200px]">
+<div class="flex items-center gap-3 w-full max-w-[160px]">
+<span class="text-data-mono font-data-mono text-tertiary-fixed-dim font-medium w-8">0.82</span>
+<div class="flex-1 h-1.5 bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-tertiary rounded-full" style="width: 82%"></div>
+</div>
+</div>
+</td>
+<td class="px-5 py-4">
+<div class="flex items-center gap-2">
+<div class="flex items-center gap-1.5 px-2 py-1 rounded-md bg-surface-container border border-outline-variant text-on-surface-variant text-code-sm font-code-sm">
+<span class="material-symbols-outlined text-[14px]">timer</span> Velocity Anomaly
+                                            </div>
+</div>
+</td>
+<td class="px-5 py-4 first:pl-6 last:pr-6 text-data-mono font-data-mono text-on-surface-variant">
+                                        45 min ago
+                                    </td>
+</tr>
+<!-- Row 3 (High Risk) -->
+<tr class="hover:bg-surface-container-high transition-colors group relative cursor-pointer">
+<td class="px-5 py-4 first:pl-6 last:pr-6">
+<div class="flex items-center gap-3">
+<div class="w-1 h-8 bg-error rounded-full opacity-0 group-hover:opacity-100 transition-opacity absolute left-0"></div>
+<span class="text-data-mono font-data-mono text-primary font-medium tracking-wide">RNG-9012-Y</span>
+</div>
+</td>
+<td class="px-5 py-4">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-error-container/20 border border-error/20 text-error text-code-sm font-code-sm font-medium uppercase tracking-wider">
+<span class="w-1.5 h-1.5 rounded-full bg-error animate-pulse"></span> Flagged
+                                        </span>
+</td>
+<td class="px-5 py-4">
+<span class="text-data-mono font-data-mono text-on-surface font-semibold">2,105</span>
+</td>
+<td class="px-5 py-4 w-[200px]">
+<div class="flex items-center gap-3 w-full max-w-[160px]">
+<span class="text-data-mono font-data-mono text-error font-medium w-8">0.99</span>
+<div class="flex-1 h-1.5 bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-error rounded-full shadow-[0_0_8px_rgba(255,180,171,0.5)]" style="width: 99%"></div>
+</div>
+</div>
+</td>
+<td class="px-5 py-4">
+<div class="flex items-center gap-2">
+<div class="flex items-center gap-1.5 px-2 py-1 rounded-md bg-surface-container border border-outline-variant text-on-surface-variant text-code-sm font-code-sm">
+<span class="material-symbols-outlined text-[14px]">account_tree</span> Synthetic Identity
+                                            </div>
+<div class="flex items-center gap-1.5 px-2 py-1 rounded-md bg-surface-container border border-outline-variant text-on-surface-variant text-code-sm font-code-sm">
+<span class="material-symbols-outlined text-[14px]">location_off</span> Geolocation Mismatch
+                                            </div>
+</div>
+</td>
+<td class="px-5 py-4 first:pl-6 last:pr-6 text-data-mono font-data-mono text-on-surface-variant">
+                                        1 hr ago
+                                    </td>
+</tr>
+<!-- Row 4 (Low Risk / Cleared look) -->
+<tr class="hover:bg-surface-container-high transition-colors group relative cursor-pointer opacity-75 hover:opacity-100">
+<td class="px-5 py-4 first:pl-6 last:pr-6">
+<div class="flex items-center gap-3">
+<div class="w-1 h-8 bg-outline-variant rounded-full opacity-0 group-hover:opacity-100 transition-opacity absolute left-0"></div>
+<span class="text-data-mono font-data-mono text-on-surface-variant font-medium tracking-wide">RNG-1102-C</span>
+</div>
+</td>
+<td class="px-5 py-4">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-high border border-outline-variant text-on-surface-variant text-code-sm font-code-sm font-medium uppercase tracking-wider">
+<span class="material-symbols-outlined text-[12px]">check</span> Cleared
+                                        </span>
+</td>
+<td class="px-5 py-4">
+<span class="text-data-mono font-data-mono text-on-surface-variant font-semibold">45</span>
+</td>
+<td class="px-5 py-4 w-[200px]">
+<div class="flex items-center gap-3 w-full max-w-[160px]">
+<span class="text-data-mono font-data-mono text-on-surface-variant font-medium w-8">0.12</span>
+<div class="flex-1 h-1.5 bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-outline-variant rounded-full" style="width: 12%"></div>
+</div>
+</div>
+</td>
+<td class="px-5 py-4">
+<div class="flex items-center gap-2">
+<div class="flex items-center gap-1.5 px-2 py-1 rounded-md bg-surface-container border border-outline-variant text-outline text-code-sm font-code-sm">
+<span class="material-symbols-outlined text-[14px]">info</span> Pattern Normal
+                                            </div>
+</div>
+</td>
+<td class="px-5 py-4 first:pl-6 last:pr-6 text-data-mono font-data-mono text-outline">
+                                        3 hrs ago
+                                    </td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Table Footer / Pagination -->
+<div class="px-6 py-4 border-t border-outline-variant bg-surface-container-lowest flex items-center justify-between">
+<span class="text-body-sm font-body-sm text-on-surface-variant">Showing 1 to 4 of 24 flagged rings</span>
+<div class="flex items-center gap-2">
+<button class="w-8 h-8 flex items-center justify-center rounded border border-outline-variant text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors disabled:opacity-50" disabled="">
+<span class="material-symbols-outlined text-sm">chevron_left</span>
+</button>
+<button class="w-8 h-8 flex items-center justify-center rounded border border-primary bg-primary-container/10 text-primary text-body-sm font-body-sm font-medium">1</button>
+<button class="w-8 h-8 flex items-center justify-center rounded border border-outline-variant text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface text-body-sm font-body-sm font-medium transition-colors">2</button>
+<span class="text-on-surface-variant text-body-sm font-body-sm px-1">...</span>
+<button class="w-8 h-8 flex items-center justify-center rounded border border-outline-variant text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface text-body-sm font-body-sm font-medium transition-colors">6</button>
+<button class="w-8 h-8 flex items-center justify-center rounded border border-outline-variant text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors">
+<span class="material-symbols-outlined text-sm">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom spacing -->
+<div class="h-12 w-full"></div>
+</main>
+</div>
+</body></html>

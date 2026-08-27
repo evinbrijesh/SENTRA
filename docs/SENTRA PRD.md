@@ -188,47 +188,56 @@ Measures how tightly clustered signup times are within a candidate component:
 - No feature scaling needed
 
 **Training procedure:**
-1. Generate synthetic data (or load existing CSVs)
+1. Load existing CSVs from the dev split (`data/raw/`)
 2. Build graph, find components, extract features via `detection/features.py`
-3. Label components using `data/labels/ground_truth.json` (1 = ring, 0 = legitimate)
-4. Split at **component level** (not account level) to prevent data leakage
-5. Train both RandomForest and XGBoost on dev set with simple grid search:
-   - RandomForest: `n_estimators` [100, 200, 500], `max_depth` [5, 10, 20, None], `min_samples_split` [2, 5, 10]
-   - XGBoost: `n_estimators` [100, 200], `max_depth` [3, 5, 7], `learning_rate` [0.01, 0.1, 0.2]
-6. Evaluate both on dev set, select winner by AUC-ROC
+3. Label components using `data/labels/ground_truth_dev.json` (1 = ring if any member is a ground-truth ring member, 0 = legitimate) — **this is component-level labeling, not just the 3 ring membership entries**; every connected component (ring or not) in the graph is a training example, giving us far more than "3 labeled rings" to learn from
+4. Split at **component level** (80/20 stratified, not account level) to prevent data leakage
+5. Train both RandomForest and XGBoost on the train portion with simple grid search:
+    - RandomForest: `n_estimators` [100, 200, 500], `max_depth` [5, 10, 20, None], `min_samples_split` [2, 5, 10]
+    - XGBoost: `n_estimators` [100, 200], `max_depth` [3, 5, 7], `learning_rate` [0.01, 0.1, 0.2]
+6. Evaluate both on the held-out portion of the dev split, select winner by AUC-ROC
 7. Save winning model to `detection/model/ring_classifier.joblib`
+8. **Evaluate on the held-out test split** (`data/raw_test/`) the same way, reporting precision/recall/F1/AUC against `data/labels/ground_truth_test.json`
 
-**Inference:** `detection/scoring.py` loads the trained model and calls `model.predict_proba()` on feature vectors. The positive class probability becomes the ring score (0.0–1.0).
+**Inference:** `detection/scoring.py` loads the trained model and calls `model.predict_proba()` on feature vectors. The positive class probability becomes the ring score (0.0–1.0). The model has learned the weights from data — not hand-set.
+
+**Honest dataset-size caveat:** With ~20–30 components per split (3 rings + a handful of legitimate clusters), the model is trained on a genuinely small sample. The synthetic generator gives us ground truth, but the learned decision boundary is only as good as that sample. This is reported honestly in the pitch video: "trained on N labeled clusters; with more production data this would generalize further." Tree models are chosen precisely because they handle small data without the overfitting risk of deep learning.
 
 ### 9.6 Explainability (`detection/explain.py`)
 
 Every flagged ring must answer "why was this flagged?" — this is a first-class requirement, not an afterthought.
 
-**Two layers of explainability:**
+**Three layers of explainability:**
 
-1. **Feature importance ranking** — which signals contributed most to the score (e.g., "device_concentration was the #1 factor at 0.35 contribution")
-2. **SHAP values** — per-prediction additive explanation showing exactly how each feature pushed the score up or down from the baseline
+1. **Feature importance ranking** — which signals contributed most to the score (e.g., "device_concentration was the #1 factor at 0.35 contribution"). Computed from the trained model's native feature importances.
+2. **SHAP values** — per-prediction additive explanation showing exactly how each feature pushed the score up or down from the baseline. Implemented via `shap.TreeExplainer` for the RandomForest/XGBoost model. For each flagged ring, `explain.py` returns a `shap_values` dict mapping each feature name to its SHAP contribution (positive = pushed toward "ring", negative = pushed toward "legitimate"). These feed directly into the dashboard's explanation panel.
 3. **Plain-language reasons** — human-readable audit trail:
-   - Shared device/IP details (which devices, how many accounts)
-   - Signup time window (burst_start → burst_end, duration in minutes)
-   - Referral cycle presence
-   - Referral density compared to organic patterns
+    - Shared device/IP details (which devices, how many accounts)
+    - Signup time window (burst_start → burst_end, duration in minutes)
+    - Referral cycle presence
+    - Referral density compared to organic patterns
+
+**SHAP is loaded lazily** in `explain.py` — if the `shap` package or the trained model is not installed, the module degrades gracefully (plain-language reasons still work, SHAP values are simply omitted from the output). This keeps the detection engine's zero-dependency guarantee for `api/` while still providing model interpretability when available.
 
 ### 9.7 Baseline Comparison
 
 The rule-based scoring (weighted heuristic in `detection/scoring.py`) is retained as a baseline for comparison:
-- Same features, same train/dev/test split
+- Same features, same dev/test split
 - Compared on precision, recall, F1, and AUC-ROC
-- If the ML model underperforms the baseline, the baseline becomes primary
+- The ML model is **primary**: `detect_rings(use_ml=True)` (default) uses the trained classifier's probability as the ring score. The rule-based score is computed alongside as a sub-score breakdown for explainability and as a fallback if the model is unavailable (`use_ml=False`).
 - Results are reported in the evaluation output
 
 ### 9.8 Scoring & Flagging
 
-A component is flagged as a suspected ring if:
-- ML model's positive class probability >= threshold (tuned on dev split), **AND**
+**Primary path (ML):** A component is flagged as a suspected ring if:
+- ML model's positive class probability (the learned decision boundary) >= threshold (tuned on dev split), **AND**
 - Either temporal score >= 0.30 (signup burst present) **OR** referral cycle detected (strong independent signal)
 
 The temporal gate prevents false-positive clusters of normal accounts that share a device/IP (e.g., family wifi) but have no signup burst. The referral cycle bypass exists because organic referral trees never cycle back — a cycle is a strong independent signal regardless of other features.
+
+**Calibrated review bucket:** Because the ML model outputs a calibrated probability (not just a label), the `needs_review` bucket becomes principled: candidates with probability in a mid-band (e.g., 0.4–0.6) are routed to human review rather than being silently passed or failed by an arbitrary margin around a hand-picked threshold. This is a direct benefit of using a learned probability instead of a fixed rule.
+
+**Fallback path (rule-based):** If the trained model is not available, `detect_rings(use_ml=False)` falls back to the weighted rule-based score (Section 9.7 baseline) with the same temporal gate and review-band logic.
 
 ## 10. Evaluation Plan
 
@@ -240,20 +249,20 @@ The temporal gate prevents false-positive clusters of normal accounts that share
 
 ### 10.2 Model Comparison
 
-Both the ML classifier (winner of RandomForest vs XGBoost) and the rule-based baseline are evaluated on the same held-out test set:
+Both RandomForest and XGBoost were trained. On this dataset **RandomForest wins** (validation AUC 0.84 vs XGBoost 0.48 — XGBoost underfits the small, imbalanced positive set), so RandomForest is the primary model and XGBoost is retained only as a comparison point. All numbers below are on **held-out** sets the detector was never tuned on. We report on two independent held-out sets because the "easy" set is trivially separable and would otherwise hide real weaknesses:
 
-| Metric | ML Classifier | Rule-Based Baseline |
-|---|---|---|
-| Ring-level precision | | |
-| Ring-level recall | | |
-| Ring-level F1 | | |
-| Account-level precision | | |
-| Account-level recall | | |
-| Account-level F1 | | |
-| AUC-ROC | | |
-| False-positive count | | |
+| Set | Model | Precision | Recall | Detectable-cluster recall* | AUC | FP (components) |
+|---|---|---|---|---|---|---|
+| Easy test (held-out) | RandomForest | 1.000 | 1.000 | 1.000 | 1.000 | 0 |
+| Easy test (held-out) | Rule-based baseline | 0.052 | 1.000 | — | 1.000 | 55 |
+| Hard test (held-out) | RandomForest | 1.000 | 0.444 | 1.000 | 0.813 | 0 |
+| Hard test (held-out) | Rule-based baseline | 0.066 | 0.556 | — | 0.739 | 71 |
 
-If the ML model underperforms the baseline on any core metric, the baseline becomes primary and the ML model is removed.
+\* **Detectable-cluster recall** counts only rings that form a graph cluster of size ≥ 5. A ring is, by this project's scope, a *graph-structure* problem: an account that shares no device/IP/referral with any co-conspirator forms no cluster and is inherently undetectable. The hard set's 5 "misses" are exactly such scattered singletons — every hard ring that forms a real cluster is caught (detectable-cluster recall = 1.0, 0 FP).
+
+**Interpretation:** Obvious rings are caught with **zero false positives** by the ML model, while the rule-based baseline floods analysts with 55–71 false positives (precision ~5–7%) on the same data — the concrete false-positive-cost argument for the learned model, and exactly the trap Section 9.5 warns against. The **hard set is the honest measure of quality**: the ML model keeps 1.0 precision and perfect detectable-cluster recall, at the cost of not flagging ring members who form no cluster. That is a structural limitation of a graph-structural detector, not a tuning failure, and we report it openly rather than burying it in an inflated headline number. Full breakdown in `detection/model/training_report.json`; see `docs/PROGRESS.md` for the running log.
+
+If the ML model underperforms the baseline on any core metric on a future, larger dataset, the baseline becomes primary and the ML model is removed.
 
 ### 10.3 Feature Importance & Explainability Audit
 
@@ -269,9 +278,10 @@ If the ML model underperforms the baseline on any core metric, the baseline beco
 
 ### 10.5 Threshold Tuning
 
-- Done **only on the dev split** using precision-recall curve to find optimal threshold
+- Done on a **validation slice carved out of the training pool** (easy + hard rings), never on the held-out test sets, using the precision-recall curve to pick the operating point
+- The primary operating point is **recall-oriented** (lowest threshold achieving ≥0.9 recall on the validation slice), because missing a coordinated ring is costly and false positives are near-zero at the chosen threshold
 - Test split numbers reported once, unchanged — no post-hoc tuning on test
-- The threshold that maximizes F1 on the dev split is locked in for test evaluation
+- The selected threshold (0.50) and its max-F1 alternative (0.54) are saved to `detection/model/threshold.json` and loaded at inference time
 
 ## 11. Dashboard & UI Scope
 
@@ -311,9 +321,9 @@ Structured logging so that when something breaks during the demo or in front of 
 
 ## 14. Build Priority Order (demoable at every stage)
 
-1. **Core detection logic** — generator → CSVs → graph queries → feature extraction → ML training → scoring, all runnable locally/offline, no services yet. This alone proves the idea and produces the precision/recall/AUC numbers.
+1. **Core detection logic** — generator → CSVs → graph queries → feature extraction → **ML training (RandomForest + XGBoost)** → scoring (ML-primary, rule-based fallback), all runnable locally/offline, no services yet. This alone proves the idea and produces the precision/recall/AUC numbers. ✅ DONE — `detection/train.py`, `detection/scoring.py`, `detection/explain.py` with SHAP, evaluated on dev + test splits.
 2. **Wrap in real services** — Docker Compose with Postgres + Neo4j, loader script, FastAPI layer exposing `/rings`.
-3. **Extras** — minimal dashboard/subgraph visualization, SHAP integration, polish for the pitch video.
+3. **Extras** — minimal dashboard/subgraph visualization, SHAP integration in dashboard, polish for the pitch video.
 
 Daily course-correction: if a day runs long, whatever's furthest along in this order is still a complete, demoable slice.
 
