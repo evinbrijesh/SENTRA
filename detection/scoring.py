@@ -44,6 +44,13 @@ RING_SIZE_MAX = 30
 # signup burst).  Has-referral-cycle bypasses this gate.
 MIN_TEMPORAL_SCORE = 0.30
 
+# Review band: candidates with scores in [REVIEW_SCORE_MIN, threshold)
+# get routed to human review instead of being silently passed/failed.
+# This catches borderline cases (e.g., subtler rings with weaker signals)
+# without lowering the auto-flag threshold and risking false positives.
+REVIEW_SCORE_MIN = 0.25
+REVIEW_TEMPORAL_MIN = 0.15  # lower temporal bar for review vs auto-flag
+
 # Exponential decay half-life for temporal scoring (minutes)
 HALF_LIFE_MINUTES = 360.0
 
@@ -174,7 +181,7 @@ def detect_rings(
     data: dict[str, pd.DataFrame] = None,
     threshold: float = 0.45,
     data_dir: str = None,
-) -> list[dict]:
+) -> dict:
     """
     Full detection pipeline:
     1. Load CSVs
@@ -182,12 +189,17 @@ def detect_rings(
     3. Find connected components
     4. Filter to candidates
     5. Score each candidate
-    6. Return flagged rings sorted by score (descending)
+    6. Classify into flagged / needs_review / clean
 
-    Args:
-        data: pre-loaded CSV data (optional, loads from disk if None)
-        threshold: minimum ring_score to flag (tune on dev split)
-        data_dir: path to CSV directory (optional)
+    Returns:
+    - flagged: list of dicts, auto-flagged rings (score >= threshold)
+    - needs_review: list of dicts, borderline candidates for human review
+    - clean: list of dicts, candidates that passed all filters
+
+    The review bucket catches cases where structural signals are present
+    but temporal or referral signals are borderline — exactly the kind of
+    case where hard gates alone would silently miss a real ring or
+    incorrectly reject a legitimate cluster.
     """
     if data is None:
         data = load_csvs(data_dir)
@@ -203,6 +215,9 @@ def detect_rings(
 
     # Score each candidate
     flagged = []
+    needs_review = []
+    clean = []
+
     for comp in candidates:
         temporal = compute_cluster_temporal(
             comp["members"], accounts_df, G, half_life=HALF_LIFE_MINUTES
@@ -216,17 +231,74 @@ def detect_rings(
             "referral_edges": comp["referral_edges"],
         }
 
-        # Flag if score >= threshold AND temporal signal present,
-        # OR if referral cycle detected (strong independent signal)
         meets_threshold = result["ring_score"] >= threshold
         meets_temporal = temporal["score"] >= MIN_TEMPORAL_SCORE
         has_cycle = result["has_referral_cycle"]
 
+        meets_review_min = result["ring_score"] >= REVIEW_SCORE_MIN
+        meets_review_temporal = temporal["score"] >= REVIEW_TEMPORAL_MIN
+
+        # Three-way classification:
+        # 1. Flagged: score >= threshold AND (temporal OR cycle)
+        # 2. Needs review: score in [REVIEW_MIN, threshold) AND (weaker temporal OR cycle)
+        # 3. Clean: everything else
         if meets_threshold and (meets_temporal or has_cycle):
+            result["status"] = "flagged"
             flagged.append(result)
+        elif meets_review_min and (meets_review_temporal or has_cycle):
+            result["status"] = "needs_review"
+            needs_review.append(result)
+        else:
+            result["status"] = "clean"
+            clean.append(result)
 
-    # Sort by score descending
+    # Sort each bucket by score descending
     flagged.sort(key=lambda x: x["ring_score"], reverse=True)
+    needs_review.sort(key=lambda x: x["ring_score"], reverse=True)
 
-    print(f"Flagged {len(flagged)} rings (threshold={threshold})")
-    return flagged
+    print(f"Flagged: {len(flagged)}, Needs review: {len(needs_review)}, Clean: {len(clean)}")
+    return {
+        "flagged": flagged,
+        "needs_review": needs_review,
+        "clean": clean,
+    }
+
+
+if __name__ == "__main__":
+    import json
+    import argparse
+    from detection.explain import explain_ring
+
+    parser = argparse.ArgumentParser(description="Sentra ring detection pipeline")
+    parser.add_argument("--data-dir", default="data/raw/", help="Path to CSV directory")
+    parser.add_argument("--output", default="data/output/flagged_rings.json", help="Output JSON path")
+    parser.add_argument("--threshold", type=float, default=0.45, help="Ring score threshold")
+    args = parser.parse_args()
+
+    print(f"Loading data from {args.data_dir}")
+    data = load_csvs(args.data_dir)
+    accounts_df = data["accounts"]
+
+    results = detect_rings(data=data, threshold=args.threshold)
+
+    # Build explained output for all three categories
+    output = {}
+    for category in ["flagged", "needs_review", "clean"]:
+        explained = []
+        for ring in results[category]:
+            exp = explain_ring(ring, accounts_df)
+            exp["members"] = ring["members"]
+            exp["status"] = ring["status"]
+            explained.append(exp)
+        output[category] = explained
+
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w") as f:
+        json.dump(output, f, indent=2)
+
+    print(f"\nWrote results to {output_path}")
+    for category, rings in output.items():
+        print(f"  {category}: {len(rings)}")
+        for r in rings:
+            print(f"    {r['ring_id']}: score={r['ring_score']:.2f} confidence={r['confidence']} members={r['member_summary']['size']}")

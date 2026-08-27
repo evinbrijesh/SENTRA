@@ -34,6 +34,8 @@
   - Compute component density, size
 - [x] `detection/temporal.py` — signup-time clustering score per component
 - [x] `detection/scoring.py` — combine structural + temporal + cycle signals into ring score (rule-based weights)
+  - Includes `__main__` entry point: `python -m detection.scoring --data-dir data/raw/ --output data/output/flagged_rings.json`
+  - Three-way classification: `flagged` (auto), `needs_review` (borderline), `clean`
 - [x] `detection/explain.py` — for each flagged ring, output: shared devices/IPs, referral subgraph, signup time window
 - [x] Run detection against generated CSVs, eyeball output — are the right clusters flagged? Are legitimate overlaps not flagged?
 
@@ -45,16 +47,24 @@
 
 **Goal:** Honest precision/recall/F1 on a held-out test set.
 
-- [ ] `evaluation/split.py` — split labeled data into dev (80%) and held-out test (20%) at the ring level
-- [ ] `evaluation/evaluate.py` — compute:
+- [x] `evaluation/split.py` — split labeled data into dev (80%) and held-out test (20%) at the ring level
+- [x] `evaluation/evaluate.py` — compute:
   - Ring-level precision, recall, F1
   - Account-level precision, recall, F1
   - False-positive cost: count legitimate accounts with shared-wifi overlap swept into flagged rings
-- [ ] Tune detection thresholds on dev split only
-- [ ] Run final evaluation on test split — **freeze these numbers**
-- [ ] Document the metrics (even a rough table in notes)
+- [x] Tune detection thresholds on dev split only
+- [x] Run final evaluation on test split — **freeze these numbers**
+- [x] Document the metrics (even a rough table in notes)
 
 **Deliverable:** Frozen precision/recall/F1 + false-positive cost on held-out test. This is the core deliverable the track grades.
+
+### Day 3 results (frozen)
+
+**Clean dev (seed 42):** P=1.00, R=1.00, F1=1.00, FP=0 (3/3 rings, 68/68 accounts)
+**Clean test (seed 137):** P=1.00, R=1.00, F1=1.00, FP=0 (3/3 rings, 50/50 accounts)
+**Hard variant:** P=1.00, R=0.71 (flagged) → R=0.93 (+review), FP=0
+
+Bonus: `needs_review` routing bucket for borderline cases (score 0.25–0.45 band). Catches partial-ring fragments that miss the auto-flag temporal gate.
 
 ---
 

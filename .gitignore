@@ -42,3 +42,8 @@ htmlcov/
 
 # Logs
 *.log
+
+# Hard-mode dataset (regenerable via data/generator/generate_hard.py)
+data/raw_hard/
+# Evaluation outputs (regenerable via evaluation/evaluate.py)
+data/output/
