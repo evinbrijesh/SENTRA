@@ -355,7 +355,7 @@ sentra/
 │                              #   batches" true without a second code path
 │
 ├── detection/
-│   ├── graph_queries.py       # Cypher: connected components, referral cycles, shared device/IP
+│   ├── graph_queries.py       # NetworkX (in-memory): connected components, referral cycles, shared device/IP
 │   ├── features.py            # Feature extraction: builds 13-dim feature vector per component
 │   ├── temporal.py            # signup-clustering scoring
 │   ├── train.py               # Trains RandomForest + XGBoost, compares, saves winning model
@@ -373,11 +373,17 @@ sentra/
 │
 ├── api/
 │   ├── main.py                # FastAPI app, logging config, request middleware
+│   ├── rings_service.py       # Runs detection (NetworkX-based) + caches results per data dir
+│   ├── neo4j_queries.py       # Real Cypher queries — subgraph + shared-entity enrichment
+│   │                          #   for /rings/{id}/subgraph; Neo4j is the persistence/query
+│   │                          #   layer for the API, NOT where core detection runs
+│   ├── state.py               # Shared app state (cached detection, loaded model)
 │   ├── routes/
-│   │   ├── rings.py           # /rings, /rings/{id}
+│   │   ├── rings.py           # /rings, /rings/{id}, /rings/{id}/subgraph (subgraph from Neo4j)
 │   │   ├── ingest.py          # /ingest — calls loader/load.py then detection/, backs
 │   │   │                      #   both the CLI/API path and the dashboard's upload button
-│   │   └── evaluate.py        # /evaluate — exposes evaluation/evaluate.py's output
+│   │   ├── evaluate.py        # /evaluate — exposes evaluation/evaluate.py's output
+│   │   └── audit.py           # /audit — detection-run + per-ring audit events (live trail)
 │   └── db.py                  # Postgres + Neo4j connection setup, shared by all routes
 │
 ├── dashboard/

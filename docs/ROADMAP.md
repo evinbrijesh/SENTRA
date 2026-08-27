@@ -121,7 +121,7 @@ catches borderline candidates without lowering the auto-flag bar.
 - [ ] Update `detection/` to read from Neo4j (Cypher queries via `graph_queries.py`) instead of CSVs when running in service mode (currently CSV-backed, Neo4j used for subgraph/shared-entity enrichment)
 - [x] Test all endpoints — smoke-tested via TestClient (CSV-backed): all return 200
 
-**Deliverable:** Working API with all 4 endpoints, detection powered by graph DB.
+**Deliverable:** Working API with all endpoints, serving NetworkX-based detection results; Neo4j powers the `/rings/{id}/subgraph` enrichment.
 
 ---
 

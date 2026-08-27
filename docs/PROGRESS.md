@@ -3,10 +3,10 @@
 Living status of the build against `docs/ROADMAP.md`. Updated as work lands.
 Last update: 2026-08-27.
 
-> **Important honesty note:** the "Day 3 results (frozen)" block in `ROADMAP.md`
-> is **out of date**. It reported `Hard R=0.71 → 0.93`, which was an inflated
-> number produced before the model trained on subtle rings. The real held-out
-> numbers are in the Day 3 section below.
+> **Note:** the Day 3 numbers were corrected (the earlier inflated
+> `Hard R=0.71 → 0.93` was replaced with the dual held-out figures below).
+> `ROADMAP.md` Day 3 now shows the current, accurate metrics — see it for the
+> authoritative numbers.
 
 ---
 
@@ -20,7 +20,7 @@ Last update: 2026-08-27.
 | 4 | Infra + loader | ✅ Done (verified) | `docker compose up` boots all 4 containers healthy; data loaded to Postgres + Neo4j; two loader/DB bugs found & fixed |
 | 5 | API layer | ✅ Done (verified) | All endpoints live in Docker with both DBs reachable; subgraph served from Neo4j |
 | 6 | Dashboard | ✅ Done (browser verified) | Click-through exercised headless: real KPIs, ring list, ring detail (explanation + subgraph + shared entities), metrics all render from live API |
-| 7 | Integration / pitch / video | ⬜ Not started | pitch video, arch diagram, public repo push pending |
+| 7 | Integration / pitch / video | 🟡 In progress | arch diagram + README done; pitch video + public repo push remaining |
 
 ---
 
@@ -49,6 +49,9 @@ Last update: 2026-08-27.
   (CSV → `ON CONFLICT DO NOTHING` / Cypher `MERGE`); used by `/ingest` too.
   Load observed: neo4j 500 accounts / 500 device edges / 500 ip edges /
   367 referral edges / 500 payments; re-run added 0 Postgres rows (idempotent).
+- `tests/test_loader.py` — proves `load_batch` is idempotent using in-memory
+  fakes (Postgres +0 new rows on re-run, no duplicate Neo4j edges); needs no
+  running DB, so the property is unit-testable on its own.
 - `api/` — `/health`, `/rings`, `/rings/{id}`, `/rings/{id}/subgraph`,
   `/evaluate`, `/ingest`. Verified live: `/rings` returns flagged rings,
   `/rings/{id}/subgraph` returns 30 nodes / 156 edges **from Neo4j**,
@@ -126,8 +129,11 @@ form a cluster of size ≥ 5).
 ---
 
 ## Not yet done
-- Day 7: 5-minute pitch video, public repo push. (Everything else from the
-  roadmap is complete and verified.)
+- Day 7: 5-minute pitch video, public repo push.
+- `detection/` still reads from CSV in service mode rather than Neo4j directly
+  — Neo4j is used for subgraph/shared-entity **enrichment only** (ROADMAP Day 5,
+  the "read from Neo4j" item is intentionally left unchecked). Core detection
+  runs on NetworkX regardless of whether Neo4j is up.
 
 ## Next recommended steps
 1. Record pitch video (problem → architecture → live detection run → metrics →
