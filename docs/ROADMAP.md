@@ -100,7 +100,7 @@ catches borderline candidates without lowering the auto-flag bar.
   - Idempotent (ON CONFLICT DO NOTHING / MERGE) and re-runnable
 - [x] `api/db.py` — Postgres + Neo4j connection setup (lazy, degrades gracefully)
 - [x] Test: `docker compose up --build` — verified 2026-08-27: all 4 containers healthy, loader populated Postgres + Neo4j (two loader/DB bugs found & fixed: null `ring_id` in Neo4j `MERGE`; `_pg_pool` name collision in `api/db.py`)
-- [ ] Write `tests/test_loader.py` — loader idempotency test (run twice, verify no duplicates)
+- [x] Write `tests/test_loader.py` — loader idempotency test (run twice, verify no duplicates)
 
 **Deliverable:** Full infra running, data in both stores, loader proven idempotent.
 
@@ -140,12 +140,12 @@ catches borderline candidates without lowering the auto-flag bar.
 
 **Goal:** Demo-ready. Pitch video. Architecture diagram. Repo polished.
 
-- [ ] Full end-to-end run: generate data → load → detect → API → dashboard → explain
-- [ ] Fix any integration bugs surfaced by end-to-end run
-- [ ] `README.md` — architecture diagram (from PRD Section 6), one-command run instructions (`docker compose up`)
+- [x] Full end-to-end run: generate data → load → detect → API → dashboard → explain
+- [x] Fix any integration bugs surfaced by end-to-end run
+- [x] `README.md` — architecture diagram (from PRD Section 6), one-command run instructions (`docker compose up`)
 - [ ] Record 5-minute pitch video: problem → architecture → live detection run → metrics → one failure case handled gracefully
 - [x] Audit trail: demonstrate clicking a ring and seeing why it was flagged (RingDetail now serves the real `explanation` + subgraph from the API)
-- [ ] Clean up: remove debug prints, ensure `.gitignore` covers `data/raw/`, `.env` files, `node_modules/`
+- [x] Clean up: remove debug prints (none stray — only legit CLI output), `.gitignore` already covers `data/raw/`, `.env`, `node_modules/`
 - [ ] Push to public repo
 
 **Deliverable:** Public repo, pitch video, architecture diagram, live audit trail — all grading deliverables met.

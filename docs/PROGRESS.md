@@ -126,11 +126,29 @@ form a cluster of size ≥ 5).
 ---
 
 ## Not yet done
-- `tests/test_loader.py` idempotency test (mentioned in Day 4) — idempotency
-  was observed live (re-run added 0 Postgres rows) but not codified as a test.
-- Day 7: architecture diagram in README, 5-min pitch video, public repo push.
+- Day 7: 5-minute pitch video, public repo push. (Everything else from the
+  roadmap is complete and verified.)
 
 ## Next recommended steps
-1. Add `tests/test_loader.py` idempotency test.
-2. Record pitch video + add architecture diagram to README (Day 7).
-3. Push to the public repo.
+1. Record pitch video (problem → architecture → live detection run → metrics →
+   one graceful failure case).
+2. Push to the public repo.
+
+## Verified during the 2026-08-27 e2e pass (no Docker daemon available here)
+- `tests/test_loader.py` added — proves load is idempotent (Postgres +0 new
+  rows on re-run, Neo4j edge set does not grow). Uses in-memory fakes so it
+  needs no running DB.
+- `detection.train` reproduces frozen metrics (Easy P/R/F1=1.0 FP=0; Hard
+  P=1.0 R=0.444, detectable-cluster R=1.0, FP=0).
+- `detection.scoring` → `evaluation.evaluate` reproduces exact held-out numbers
+  (account-level P/R/F1=1.0, 0 FP).
+- API (`/health`, `/rings`, `/rings/{id}`, `/rings/{id}/subgraph`, `/audit`,
+  `/evaluate`) all return 200 via `TestClient` (CSV fallback, no DBs).
+- Dashboard `npm run build` succeeds (347 modules, incl. cytoscape). **Bug
+  found + fixed:** `react-cytoscapejs` / `cytoscape-dagre` were declared in
+  `package.json` but not installed in `node_modules` → build failed to resolve
+  them. Ran `npm install` to pull them in. (The in-repo `dist/` is root-owned
+  from an earlier Docker build and can't be overwritten without sudo; it's
+  gitignored, so it doesn't affect the repo — build to a clean dir instead.)
+- README now has the architecture diagram (PRD Section 6) + one-command
+  `docker compose up` run instructions.

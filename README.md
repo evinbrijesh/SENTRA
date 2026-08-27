@@ -51,6 +51,76 @@ cluster are undetectable by construction — but every hard ring that forms a re
 is caught. The rule-based baseline, by contrast, floods review with false positives
 (easy P≈0.05, hard P≈0.07). Full breakdown in `detection/model/training_report.json`.
 
+## Architecture
+
+```
+┌─────────────────┐        ┌───────────────────────────┐
+│  Data Generator  │        │  New batch (any later CSV │
+│  (synthetic,      │        │  of accounts/devices/     │
+│  initial dataset) │        │  transactions/referrals)  │
+└────────┬─────────┘        └────────────┬───────────────┘
+         │                                │
+         │  loader/load.py (single path for BOTH:
+         │  initial load and any later re-run on a batch)
+         ▼                                ▼
+┌─────────────────────────────┬───────────────────────────┐
+│         Postgres            │           Neo4j            │
+│  transactional truth:       │  relationship graph:       │
+│  accounts, transactions,    │  account↔device,           │
+│  KYC status                 │  account↔ip,               │
+│                             │  account↔referral          │
+└──────────────┬───────────────┴────────────┬─────────────┘
+               │                               │
+               ▼                               ▼
+        ┌───────────────────────────────────────────┐
+        │           Detection engine (offline)        │
+        │  - graph_queries: connected components on   │
+        │    shared device/IP + referral-cycle density │
+        │  - temporal: signup-window clustering        │
+        │  - features: 13-dim component vector         │
+        │  - ML classifier: RandomForest/XGBoost        │
+        │  - explainability: SHAP + plain-language       │
+        └───────────────────┬───────────────────────┘
+                            ▼
+                 ┌────────────────────────────────┐
+                 │   API layer (FastAPI)           │
+                 │  /rings  /rings/{id}            │
+                 │  /rings/{id}/subgraph           │
+                 │  /evaluate  /ingest  /audit      │
+                 └───────────┬────────────────────────┘
+                             ▼
+                 ┌───────────────────────────┐
+                 │  Dashboard (React + Vite)  │
+                 │  - ranked ring list        │
+                 │  - subgraph view (Cytoscape)│
+                 │  - explanation panel       │
+                 │  - ingest button → /ingest  │
+                 └───────────────────────────┘
+```
+
+Postgres is the row-level source of truth; Neo4j is the relationship layer ring
+structure (density, cycles, connected components) is a graph question, not a SQL
+one. The loader is the *only* path data enters the databases, so re-running on a
+new batch is safe and idempotent. `detection/` and `evaluation/` have zero
+dependency on `api/` and are unit-testable directly against ground truth.
+
+## Run the whole stack (Docker Compose)
+
+```bash
+cp .env.example .env          # adjust credentials if you like
+docker compose up --build     # postgres + neo4j + api + dashboard
+```
+
+The API self-bootstraps on first run (generate data → train model → load initial
+batch → serve). Then:
+
+- Dashboard: http://localhost:5173
+- API docs:    http://localhost:8000/docs
+- Health:      http://localhost:8000/health
+
+To re-run detection on a new CSV batch, `POST` it to `/ingest` (or use the
+dashboard's ingest button) — it routes through the same `loader/load.py`.
+
 ## Project structure
 
 ```
@@ -61,8 +131,8 @@ sentra/
 │   └── raw/          # Generated CSVs (gitignored)
 ├── detection/        # Graph queries, scoring, explainability
 ├── evaluation/       # Precision/recall/F1 on held-out test set
-├── api/              # FastAPI endpoints (WIP)
-├── dashboard/        # React UI (WIP)
-├── loader/           # CSV → Postgres/Neo4j loader (WIP)
+├── api/              # FastAPI endpoints
+├── dashboard/        # React UI
+├── loader/           # CSV → Postgres/Neo4j loader
 └── docs/             # PRD, roadmap
 ```
