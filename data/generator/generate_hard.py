@@ -28,8 +28,8 @@ import pandas as pd
 from faker import Faker
 
 # ── Hard ring config (mirrors config.py structure) ────────────
-TOTAL_ACCOUNTS = 500
-NUM_RINGS = 3
+TOTAL_ACCOUNTS = 2000
+NUM_RINGS = 15
 RING_SIZE_MIN = 10
 RING_SIZE_MAX = 25
 
