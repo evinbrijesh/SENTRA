@@ -5,11 +5,84 @@ Turns a flagged ring's scores and structural features into a
 plain-language explanation. This is the audit trail — every flagged
 ring must answer "why was this flagged?" in terms a risk analyst
 can act on.
+
+Now includes SHAP (SHapley Additive exPlanations) for ML model
+explainability — shows which features drove the model's decision
+and by how much for each individual prediction.
 """
 
 import pandas as pd
+import numpy as np
 
 from detection.scoring import WEIGHTS
+from detection.features import FEATURE_NAMES, extract_features_for_component
+from detection.graph_queries import build_graph, load_csvs
+
+# SHAP is optional - handle gracefully if not installed
+try:
+    import shap
+    HAS_SHAP = True
+except ImportError:
+    HAS_SHAP = False
+
+
+def _get_shap_explainer():
+    """
+    Get or create the SHAP TreeExplainer for the ML model.
+    Uses the model's training data as background if available.
+    """
+    if not HAS_SHAP:
+        return None
+    
+    import joblib
+    from pathlib import Path
+    
+    MODEL_DIR = Path(__file__).parent.parent / "detection" / "model"
+    MODEL_PATH = MODEL_DIR / "ring_classifier.joblib"
+    
+    if not MODEL_PATH.exists():
+        return None
+    
+    model = joblib.load(MODEL_PATH)
+    
+    # Create TreeExplainer - for RandomForest/XGBoost
+    # Use feature_perturbation='tree_path_dependent' for speed (no background data needed)
+    explainer = shap.TreeExplainer(model, feature_perturbation='tree_path_dependent')
+    return explainer
+
+
+def _compute_shap_values(component: dict, accounts_df: pd.DataFrame, graph) -> dict | None:
+    """
+    Compute SHAP values for a single component's features.
+    
+    Returns dict with feature names as keys and SHAP values as values,
+    or None if SHAP is not available.
+    """
+    if not HAS_SHAP:
+        return None
+    
+    explainer = _get_shap_explainer()
+    if explainer is None:
+        return None
+    
+    # Extract features for this component
+    result = extract_features_for_component(component, accounts_df, graph)
+    features = np.array(result["features"]).reshape(1, -1)  # shape (1, 13)
+    
+    # Compute SHAP values - returns (n_samples, n_features, n_classes) for binary
+    shap_values = explainer.shap_values(features)
+    
+    # For binary classification: shap_values is list of [class_0, class_1] arrays
+    # Each has shape (1, 13)
+    if isinstance(shap_values, list) and len(shap_values) == 2:
+        # Class 1 (ring) SHAP values
+        sv = shap_values[1][0]  # shape (13,)
+    else:
+        # Single array case: shape (1, 13, 2) -> take class 1
+        sv = shap_values[0, :, 1]
+    
+    # Return as dict
+    return dict(zip(FEATURE_NAMES, [float(v) for v in sv]))
 
 
 def explain_ring(
@@ -23,7 +96,8 @@ def explain_ring(
     Returns:
     - summary: one-sentence verdict
     - reasons: list of structured reason objects
-    - risk_factors: ranked list of what contributed most to the score
+    - risk_factors: ranked list of what contributed most to the score (rule-based)
+    - shap_values: SHAP values showing ML feature contributions (if available)
     - member_summary: stats about the ring members
     """
     members = flagged["members"]
@@ -113,7 +187,7 @@ def explain_ring(
                 "severity": "high" if ref_density > 0.3 else "medium",
             })
 
-    # ── Risk factors (ranked by sub_score contribution) ─────────
+    # ── Risk factors (ranked by rule-based sub_score contribution) ─────────
     risk_factors = []
     for signal, weight in sorted(
         WEIGHTS.items(), key=lambda x: x[1] * sub_scores.get(x[0], 0), reverse=True
@@ -126,6 +200,24 @@ def explain_ring(
                 "weight": weight,
                 "contribution": round(contribution, 4),
             })
+
+    # ── SHAP values (ML model explainability) ────────────────────
+    shap_values = None
+    if graph is not None and HAS_SHAP:
+        shap_values = _compute_shap_values(
+            {"component_id": flagged.get("component_id"),
+             "size": size,
+             "density": flagged.get("sub_scores", {}).get("density", 0) / WEIGHTS.get("density", 1) if WEIGHTS.get("density", 1) else 0,
+             "unique_devices": structural.get("unique_devices", 0),
+             "unique_ips": structural.get("unique_ips", 0),
+             "shared_device_edges": structural.get("shared_device_edges", 0),
+             "shared_ip_edges": structural.get("shared_ip_edges", 0),
+             "referral_edges": structural.get("referral_edges", 0),
+             "has_referral_cycle": flagged.get("has_referral_cycle", False),
+             "members": members},
+            accounts_df,
+            graph
+        )
 
     # ── Summary ─────────────────────────────────────────────────
     score = flagged["ring_score"]
@@ -148,7 +240,7 @@ def explain_ring(
     # ── Member summary ──────────────────────────────────────────
     kyc_dist = member_df["kyc_status"].value_counts().to_dict() if len(member_df) > 0 else {}
 
-    return {
+    output = {
         "ring_id": flagged.get("component_id"),
         "ring_score": score,
         "confidence": confidence,
@@ -162,3 +254,8 @@ def explain_ring(
             "burst_minutes": burst_minutes,
         },
     }
+    
+    if shap_values is not None:
+        output["shap_values"] = shap_values
+    
+    return output

@@ -1,0 +1,5 @@
+{
+  "threshold": 0.5,
+  "recall_oriented_threshold": 0.5,
+  "model": "RandomForest"
+}

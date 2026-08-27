@@ -1,0 +1,79 @@
+{
+  "selected_model": "RandomForest",
+  "selected_params": {
+    "max_depth": 5,
+    "min_samples_split": 10,
+    "n_estimators": 100,
+    "random_state": 42
+  },
+  "validation_cv_auc": 0.8385,
+  "selected_threshold": 0.5,
+  "max_f1_threshold": 0.54,
+  "recall_oriented_threshold": 0.5,
+  "easy_test": {
+    "auc": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true_positives": 3,
+    "false_positives": 0,
+    "false_negatives": 0,
+    "true_negatives": 355,
+    "detectable_cluster_recall": 1.0,
+    "detectable_clusters_total": 3
+  },
+  "hard_test": {
+    "auc": 0.8129,
+    "precision": 1.0,
+    "recall": 0.4444,
+    "f1": 0.6154,
+    "true_positives": 4,
+    "false_positives": 0,
+    "false_negatives": 5,
+    "true_negatives": 408,
+    "detectable_cluster_recall": 1.0,
+    "detectable_clusters_total": 4
+  },
+  "rule_based_baseline": {
+    "easy_test": {
+      "auc": 1.0,
+      "precision": 0.0517,
+      "recall": 1.0,
+      "f1": 0.0984,
+      "true_positives": 3,
+      "false_positives": 55,
+      "false_negatives": 0,
+      "true_negatives": 300
+    },
+    "hard_test": {
+      "auc": 0.7391,
+      "precision": 0.0658,
+      "recall": 0.5556,
+      "f1": 0.1176,
+      "true_positives": 5,
+      "false_positives": 71,
+      "false_negatives": 4,
+      "true_negatives": 337
+    }
+  },
+  "shap_global_importance": {
+    "size": 0.0054,
+    "density": 0.0004,
+    "unique_devices": 0.0011,
+    "unique_ips": 0.0009,
+    "device_concentration": 0.0004,
+    "ip_concentration": 0.0009,
+    "shared_device_edges": 0.0049,
+    "shared_ip_edges": 0.0032,
+    "referral_edges": 0.0044,
+    "referral_density": 0.0004,
+    "has_referral_cycle": 0.0001,
+    "temporal_score": 0.0024,
+    "burst_minutes": 0.001
+  },
+  "candidate_cv_auc": {
+    "RandomForest": 0.8385,
+    "XGBoost": 0.483
+  },
+  "note": "Metrics are reported on two independent held-out sets. The HARD set contains subtle rings (partial device/IP overlap, long signup burst, no referral cycle) and is the honest measure of detection quality. 'detectable_cluster_recall' counts only rings that form a graph cluster of size >= 5 \u2014 by the PRD's stated scope a ring is a graph-structure problem, so accounts that share NO device/IP/referral with any co-conspirator are inherently undetectable and excluded from that figure (not buried as false misses). FP/FN counts are the cost."
+}
