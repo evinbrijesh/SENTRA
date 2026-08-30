@@ -19,7 +19,6 @@ export default function App() {
     else if (key === "metrics") navigate("metrics");
     else if (key === "audit") navigate("audit");
     else if (key === "upload") navigate("upload");
-    else if (key === "settings") navigate("dashboard");
   };
 
   useEffect(() => {

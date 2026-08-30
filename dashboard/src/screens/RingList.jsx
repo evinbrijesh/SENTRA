@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Icon from "../components/Icon.jsx";
 import { fetchRings } from "../lib/api.js";
-import { mockRings } from "../lib/mock.js";
 import { scoreTone, scoreTrack, signalIcon, signalLabel, statusMeta, timeAgo } from "../lib/format.js";
 
 const PER_PAGE = 8;
@@ -14,27 +13,25 @@ const STATUS_FILTERS = [
 
 export default function RingList({ onSelectRing, onOpenIngest }) {
   const [rings, setRings] = useState(null);
-  const [usingMock, setUsingMock] = useState(false);
+  const [error, setError] = useState(false);
   const [activeStatus, setActiveStatus] = useState("flagged");
   const [scoreFilter, setScoreFilter] = useState("all");
   const [page, setPage] = useState(1);
 
-  useEffect(() => {
-    let cancelled = false;
+  const load = () => {
+    setRings(null);
+    setError(false);
     fetchRings()
       .then((data) => {
-        if (cancelled) return;
         setRings(Array.isArray(data) ? data : data.rings || []);
-        setUsingMock(false);
       })
       .catch(() => {
-        if (cancelled) return;
-        setRings(mockRings);
-        setUsingMock(true);
+        setError(true);
       });
-    return () => {
-      cancelled = true;
-    };
+  };
+
+  useEffect(() => {
+    load();
   }, []);
 
   const filtered = useMemo(() => {
@@ -106,15 +103,28 @@ export default function RingList({ onSelectRing, onOpenIngest }) {
         </button>
       </div>
 
-      {usingMock && (
-        <div className="flex items-center gap-2 rounded-lg border border-amber/30 bg-amber/10 px-4 py-2 text-body-sm text-amber">
-          <Icon name="info" className="text-[16px]" />
-          <span>API offline — showing bundled demo data. Start the FastAPI backend for live rings.</span>
+      {error && (
+        <div className="flex items-center justify-between gap-4 rounded-lg border border-error/30 bg-error-container/10 px-4 py-3">
+          <div className="flex items-center gap-2 text-body-sm text-error">
+            <Icon name="cloud_off" className="text-[16px]" />
+            <span>Cannot reach the API — start the FastAPI backend, then retry.</span>
+          </div>
+          <button
+            onClick={load}
+            className="flex items-center gap-1.5 rounded-md border border-error/30 px-3 py-1 text-body-sm font-medium text-error transition-colors hover:bg-error/10"
+          >
+            <Icon name="refresh" className="text-[15px]" />
+            Retry
+          </button>
         </div>
       )}
 
       <div className="flex w-full flex-col overflow-hidden rounded-xl border border-outline-variant bg-[#11141D]/80 shadow-2xl backdrop-blur-md">
-        {!rings ? (
+        {error ? (
+          <div className="py-16 text-center text-on-surface-variant">
+            No data — start the backend and press Retry above.
+          </div>
+        ) : !rings ? (
           <div className="flex items-center justify-center gap-2 py-16 text-on-surface-variant">
             <Icon name="sync" className="animate-spin" />
             Loading rings…

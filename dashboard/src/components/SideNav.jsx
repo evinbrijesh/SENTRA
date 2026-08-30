@@ -45,15 +45,6 @@ export default function SideNav({ active, onSelect }) {
           );
         })}
       </div>
-      <div className="mt-auto px-2">
-        <button
-          onClick={() => onSelect("settings")}
-          className="group flex items-center gap-3 rounded-lg px-4 py-3 text-on-surface-variant transition-colors hover:bg-surface-container-high"
-        >
-          <Icon name="settings" className="opacity-80 transition-opacity group-hover:opacity-100" />
-          <span className="body-sm font-body-sm">Settings</span>
-        </button>
-      </div>
     </nav>
   );
 }
