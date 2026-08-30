@@ -52,27 +52,65 @@ def get_subgraph(members: list[str]) -> dict:
         for r in node_rows
     ]
 
-    edge_rows = _run(
-        "MATCH (a:Account)-[r]-(b:Account) "
-        "WHERE a.account_id IN $members AND b.account_id IN $members AND a.account_id < b.account_id "
-        "RETURN a.account_id AS s, b.account_id AS t, collect(DISTINCT type(r)) AS rels",
-        members=members,
-    )
+    edge_map: dict[tuple[str, str], set[str]] = {}
+
+    # 1. Direct referral links
+    try:
+        ref_rows = _run(
+            "MATCH (a:Account)-[:REFERRED]->(b:Account) "
+            "WHERE a.account_id IN $members AND b.account_id IN $members "
+            "RETURN a.account_id AS s, b.account_id AS t",
+            members=members,
+        )
+        for r in ref_rows:
+            pair = (r["s"], r["t"])
+            if pair not in edge_map:
+                edge_map[pair] = set()
+            edge_map[pair].add("referral")
+    except Exception as e:
+        log.warning("Failed querying referrals: %s", e)
+
+    # 2. Shared device links
+    try:
+        dev_rows = _run(
+            "MATCH (a:Account)-[:USES_DEVICE]->(d:Device)<-[:USES_DEVICE]-(b:Account) "
+            "WHERE a.account_id IN $members AND b.account_id IN $members AND a.account_id < b.account_id "
+            "RETURN a.account_id AS s, b.account_id AS t",
+            members=members,
+        )
+        for r in dev_rows:
+            pair = (r["s"], r["t"])
+            if pair not in edge_map:
+                edge_map[pair] = set()
+            edge_map[pair].add("shared_device")
+    except Exception as e:
+        log.warning("Failed querying shared devices: %s", e)
+
+    # 3. Shared IP links
+    try:
+        ip_rows = _run(
+            "MATCH (a:Account)-[:CONNECTS_VIA_IP]->(ip:IP)<-[:CONNECTS_VIA_IP]-(b:Account) "
+            "WHERE a.account_id IN $members AND b.account_id IN $members AND a.account_id < b.account_id "
+            "RETURN a.account_id AS s, b.account_id AS t",
+            members=members,
+        )
+        for r in ip_rows:
+            pair = (r["s"], r["t"])
+            if pair not in edge_map:
+                edge_map[pair] = set()
+            edge_map[pair].add("shared_ip")
+    except Exception as e:
+        log.warning("Failed querying shared IPs: %s", e)
+
     edges = []
-    for r in edge_rows:
-        reasons = []
-        for rel in r["rels"]:
-            reason = _REASON_OF.get(rel)
-            if reason and reason not in reasons:
-                reasons.append(reason)
-        if not reasons:
-            continue
+    for (s, t), reasons in edge_map.items():
+        reasons_list = sorted(list(reasons))
         edges.append({
             "data": {
-                "source": r["s"],
-                "target": r["t"],
-                "label": " + ".join(x.replace("_", " ") for x in reasons),
-                "reasons": reasons,
+                "source": s,
+                "target": t,
+                "label": " + ".join(x.replace("_", " ") for x in reasons_list),
+                "reasons": reasons_list,
             }
         })
 
@@ -142,9 +180,78 @@ def _has_cycle(edges: list[tuple]) -> bool:
         return False
 
     for n in nodes:
-        if color[n] == WHITE and visit(n):
-            return True
+        if color[n] == WHITE:
+            if visit(n):
+                return True
     return False
+
+
+def get_global_graph() -> dict:
+    """Return complete graph visualization payload for all monitored entities."""
+    node_rows = _run(
+        "MATCH (a:Account) "
+        "RETURN a.account_id AS id, a.signup_time AS signup_time, a.kyc_status AS kyc_status "
+        "LIMIT 1000"
+    )
+    nodes = [
+        {"data": {
+            "id": r["id"],
+            "signup_time": r.get("signup_time") or "",
+            "kyc_status": r.get("kyc_status") or "",
+        }}
+        for r in node_rows
+    ]
+
+    edge_map: dict[tuple[str, str], set[str]] = {}
+
+    try:
+        ref_rows = _run(
+            "MATCH (a:Account)-[:REFERRED]->(b:Account) "
+            "RETURN a.account_id AS s, b.account_id AS t LIMIT 1500"
+        )
+        for r in ref_rows:
+            pair = (r["s"], r["t"])
+            edge_map.setdefault(pair, set()).add("referral")
+    except Exception as e:
+        log.warning("Failed querying global referrals: %s", e)
+
+    try:
+        dev_rows = _run(
+            "MATCH (a:Account)-[:USES_DEVICE]->(d:Device)<-[:USES_DEVICE]-(b:Account) "
+            "WHERE a.account_id < b.account_id "
+            "RETURN a.account_id AS s, b.account_id AS t LIMIT 2500"
+        )
+        for r in dev_rows:
+            pair = (r["s"], r["t"])
+            edge_map.setdefault(pair, set()).add("shared_device")
+    except Exception as e:
+        log.warning("Failed querying global shared devices: %s", e)
+
+    try:
+        ip_rows = _run(
+            "MATCH (a:Account)-[:CONNECTS_VIA_IP]->(ip:IP)<-[:CONNECTS_VIA_IP]-(b:Account) "
+            "WHERE a.account_id < b.account_id "
+            "RETURN a.account_id AS s, b.account_id AS t LIMIT 2500"
+        )
+        for r in ip_rows:
+            pair = (r["s"], r["t"])
+            edge_map.setdefault(pair, set()).add("shared_ip")
+    except Exception as e:
+        log.warning("Failed querying global shared IPs: %s", e)
+
+    edges = []
+    for (s, t), reasons in edge_map.items():
+        reasons_list = sorted(list(reasons))
+        edges.append({
+            "data": {
+                "source": s,
+                "target": t,
+                "label": " + ".join(x.replace("_", " ") for x in reasons_list),
+                "reasons": reasons_list,
+            }
+        })
+
+    return {"nodes": nodes, "edges": edges}
 
 
 def structural_counts(members: list[str]) -> dict:

@@ -81,6 +81,52 @@ def get_subgraph(ring_id: str):
     return get_subgraph_json(G, members)
 
 
+@router.get("/graph/global")
+def get_global_graph():
+    """Return complete network graph of all monitored entities with ring classifications."""
+    try:
+        rings = rings_service.ring_list(_data_dir())
+        acct_to_ring = {}
+        for r in rings:
+            status = r.get("status", "clean")
+            score = r.get("ring_score", 0.0)
+            cid = r.get("component_id")
+            for m in r.get("members", []):
+                acct_to_ring[str(m)] = {
+                    "ring_id": cid,
+                    "status": status,
+                    "score": score,
+                }
+
+        if neo4j_available():
+            try:
+                g = neo4j_queries.get_global_graph()
+                for n in g.get("nodes", []):
+                    aid = n["data"]["id"]
+                    rinfo = acct_to_ring.get(aid, {"ring_id": None, "status": "unflagged", "score": 0.0})
+                    n["data"]["ring_id"] = rinfo["ring_id"]
+                    n["data"]["status"] = rinfo["status"]
+                    n["data"]["score"] = rinfo["score"]
+                return g
+            except Exception as e:
+                log.warning("neo4j global graph failed, falling back to CSV: %s", e)
+
+        # CSV fallback
+        data = load_csvs(_data_dir())
+        G = build_graph(data)
+        g = get_subgraph_json(G, list(G.nodes()))
+        for n in g.get("nodes", []):
+            aid = n["data"]["id"]
+            rinfo = acct_to_ring.get(aid, {"ring_id": None, "status": "unflagged", "score": 0.0})
+            n["data"]["ring_id"] = rinfo["ring_id"]
+            n["data"]["status"] = rinfo["status"]
+            n["data"]["score"] = rinfo["score"]
+        return g
+    except Exception as e:
+        log.error("Failed to build global graph: %s", e)
+        raise HTTPException(status_code=500, detail=f"Global graph failed: {e}")
+
+
 def _shared_entities(ring: dict) -> dict:
     members = ring.get("members", [])
     if neo4j_available():
@@ -104,3 +150,4 @@ def _shared_entities(ring: dict) -> dict:
         "source": "detection",
     }
     return entities
+

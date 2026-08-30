@@ -111,11 +111,18 @@ def _compute_detection(data_dir: str) -> dict:
                 exposure_gmv = round(len(members) * 14850.0, 2)
 
             decision = get_decision_for_ring(str(ring["component_id"]))
+            effective_status = ring["status"]
+            if decision:
+                if decision.get("action") == "CONFIRM_FRAUD":
+                    effective_status = "confirmed_fraud"
+                elif decision.get("action") == "DISMISS_FALSE_POSITIVE":
+                    effective_status = "dismissed_fp"
 
             ring_obj = {
                 "component_id": ring["component_id"],
                 "ring_score": ring["ring_score"],
-                "status": ring["status"],
+                "status": effective_status,
+                "original_status": ring["status"],
                 "size": ring["size"],
                 "detected_at": detected_at,
                 "has_referral_cycle": ring.get("has_referral_cycle", False),
@@ -130,12 +137,19 @@ def _compute_detection(data_dir: str) -> dict:
             }
             out[category].append(ring_obj)
 
-    # Compute total flagged exposure at risk
-    total_flagged_exposure = sum(r["estimated_exposure_gmv"] for r in out["flagged"])
-    total_review_exposure = sum(r["estimated_exposure_gmv"] for r in out["needs_review"])
+    # Compute total flagged exposure at risk (active un-dismissed risks)
+    active_flagged = [r for r in out["flagged"] if r["status"] != "dismissed_fp"]
+    active_review = [r for r in out["needs_review"] if r["status"] == "needs_review"]
+    confirmed_rings = [r for r in out["flagged"] + out["needs_review"] if r["status"] == "confirmed_fraud"]
+
+    total_flagged_exposure = sum(r["estimated_exposure_gmv"] for r in active_flagged)
+    total_review_exposure = sum(r["estimated_exposure_gmv"] for r in active_review)
+
     out["operational_summary"]["flagged_exposure_gmv"] = round(total_flagged_exposure, 2)
     out["operational_summary"]["review_exposure_gmv"] = round(total_review_exposure, 2)
     out["operational_summary"]["total_exposure_gmv"] = round(total_flagged_exposure + total_review_exposure, 2)
+    out["operational_summary"]["active_review_count"] = len(active_review)
+    out["operational_summary"]["confirmed_fraud_count"] = len(confirmed_rings)
 
     out["flagged"].sort(key=lambda r: r["ring_score"], reverse=True)
     out["needs_review"].sort(key=lambda r: r["ring_score"], reverse=True)
@@ -150,9 +164,9 @@ def run_detection(data_dir: str = DEFAULT_DATA_DIR) -> dict:
 
 
 def ring_list(data_dir: str = DEFAULT_DATA_DIR) -> list[dict]:
-    """Flatten flagged + needs_review rings into a single list for /rings."""
+    """Flatten flagged + needs_review + clean rings into a single list for /rings."""
     run = run_detection(data_dir)
-    rings = run["flagged"] + run["needs_review"]
+    rings = run["flagged"] + run["needs_review"] + run.get("clean", [])
     rings.sort(key=lambda r: r["ring_score"], reverse=True)
     return rings
 
@@ -160,7 +174,7 @@ def ring_list(data_dir: str = DEFAULT_DATA_DIR) -> list[dict]:
 def find_ring(data_dir: str, ring_id) -> dict | None:
     """Return a single ring (by component_id, may be str or int)."""
     run = run_detection(data_dir)
-    for ring in run["flagged"] + run["needs_review"]:
+    for ring in run["flagged"] + run["needs_review"] + run.get("clean", []):
         if str(ring["component_id"]) == str(ring_id):
             return ring
     return None
