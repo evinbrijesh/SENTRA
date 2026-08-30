@@ -56,6 +56,14 @@ def pg_cursor():
         cur = conn.cursor()
         yield cur
         conn.commit()
+    except Exception:
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:  # noqa: BLE001
+                return_pg_conn(conn, broken=True)
+                conn = None
+        raise
     finally:
         if conn is not None:
             return_pg_conn(conn)

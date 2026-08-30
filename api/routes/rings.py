@@ -74,9 +74,14 @@ def _shared_entities(ring: dict) -> dict:
         except Exception as e:  # noqa: BLE001
             log.warning("neo4j shared entities failed, falling back: %s", e)
 
+    unique_devices = ring["structural"].get("unique_devices", 0)
+    unique_ips = ring["structural"].get("unique_ips", 0)
+    size = ring["size"]
+    accts_per_device = round(size / unique_devices) if unique_devices > 0 else 0
+    accts_per_ip = round(size / unique_ips) if unique_ips > 0 else 0
     entities = {
-        "devices": [{"id": f"DEV-{i}", "accounts": ring["size"]} for i in range(ring["structural"].get("unique_devices", 0))],
-        "ips": [{"id": f"IP-{i}", "accounts": ring["size"]} for i in range(ring["structural"].get("unique_ips", 0))],
+        "devices": [{"id": f"DEV-{i}", "accounts": accts_per_device} for i in range(unique_devices)],
+        "ips": [{"id": f"IP-{i}", "accounts": accts_per_ip} for i in range(unique_ips)],
         "payment_methods": [],
         "has_referral_cycle": ring.get("has_referral_cycle", False),
         "source": "detection",
