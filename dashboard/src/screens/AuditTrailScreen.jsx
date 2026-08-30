@@ -270,54 +270,58 @@ export default function AuditTrailScreen({ onSelectRing }) {
 
       {/* Audit Event Ledger Table */}
       <div className="flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-[#11141D]/90 shadow-2xl backdrop-blur-md">
-        <div className="grid grid-cols-[110px_2.5fr_1.5fr_120px_40px] gap-4 border-b border-outline-variant bg-surface-container-lowest/60 px-6 py-3 font-code-sm text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">
-          <div>Time</div>
-          <div>Event / Action</div>
-          <div>Actor / Role</div>
-          <div>Status</div>
-          <div className="w-6" />
-        </div>
-
-        <div className="divide-y divide-outline-variant/30 overflow-y-auto max-h-[600px]">
-          {rows.length === 0 ? (
-            <div className="flex items-center justify-center gap-2 py-16 text-on-surface-variant font-code-sm">
-              <Icon name="search" /> No matching audit records found.
+        <div className="w-full overflow-x-auto">
+          <div className="min-w-[900px]">
+            <div className="grid grid-cols-[110px_2.5fr_1.5fr_120px_40px] gap-4 border-b border-outline-variant bg-surface-container-lowest/60 px-6 py-3 font-code-sm text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">
+              <div>Time</div>
+              <div>Event / Action</div>
+              <div>Actor / Role</div>
+              <div>Status</div>
+              <div className="w-6" />
             </div>
-          ) : (
-            rows.map((ev) => {
-              const open = expanded === (ev.event_id || ev.block_index);
-              const evId = ev.event_id || ev.block_index;
-              const title = ev.summary || `${ev.action_type} - Ring #${ev.ring_id}`;
 
-              return (
-                <div key={evId} className="group transition-colors hover:bg-surface-container-high/40">
-                  <div
-                    className="grid cursor-pointer grid-cols-[110px_2.5fr_1.5fr_120px_40px] items-center gap-4 px-6 py-3.5"
-                    onClick={() => setExpanded(open ? null : evId)}
-                  >
-                    <div className="font-code-sm text-[12px] text-on-surface-variant">
-                      {timeAgo(ev.timestamp || ev.ts)}
-                    </div>
-                    <div className="font-sans text-body-sm font-medium text-on-surface truncate group-hover:text-primary">
-                      {title}
-                    </div>
-                    <div className="font-code-sm text-[12px] text-primary truncate">
-                      {ev.actor}
-                    </div>
-                    <div>
-                      <StatusBadge status={ev.status} />
-                    </div>
-                    <Icon
-                      name={open ? "expand_less" : "expand_more"}
-                      className="text-on-surface-variant group-hover:text-primary transition-colors"
-                    />
-                  </div>
-
-                  {open && <EventPayload ev={ev} onSelectRing={onSelectRing} />}
+            <div className="divide-y divide-outline-variant/30 overflow-y-auto max-h-[600px]">
+              {rows.length === 0 ? (
+                <div className="flex items-center justify-center gap-2 py-16 text-on-surface-variant font-code-sm">
+                  <Icon name="search" /> No matching audit records found.
                 </div>
-              );
-            })
-          )}
+              ) : (
+                rows.map((ev) => {
+                  const open = expanded === (ev.event_id || ev.block_index);
+                  const evId = ev.event_id || ev.block_index;
+                  const title = ev.summary || `${ev.action_type} - Ring #${ev.ring_id}`;
+
+                  return (
+                    <div key={evId} className="group transition-colors hover:bg-surface-container-high/40">
+                      <div
+                        className="grid cursor-pointer grid-cols-[110px_2.5fr_1.5fr_120px_40px] items-center gap-4 px-6 py-3.5"
+                        onClick={() => setExpanded(open ? null : evId)}
+                      >
+                        <div className="font-code-sm text-[12px] text-on-surface-variant">
+                          {timeAgo(ev.timestamp || ev.ts)}
+                        </div>
+                        <div className="font-sans text-body-sm font-medium text-on-surface truncate group-hover:text-primary" title={title}>
+                          {title}
+                        </div>
+                        <div className="font-code-sm text-[12px] text-primary truncate" title={ev.actor}>
+                          {ev.actor}
+                        </div>
+                        <div>
+                          <StatusBadge status={ev.status} />
+                        </div>
+                        <Icon
+                          name={open ? "expand_less" : "expand_more"}
+                          className="text-on-surface-variant group-hover:text-primary transition-colors"
+                        />
+                      </div>
+
+                      {open && <EventPayload ev={ev} onSelectRing={onSelectRing} />}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>

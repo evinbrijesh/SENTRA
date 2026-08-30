@@ -6,15 +6,16 @@ import { formatCurrency, formatScoreProb, scoreBandMeta, scoreTone, scoreTrack, 
 const PER_PAGE = 8;
 
 const STATUS_FILTERS = [
-  { key: "flagged", label: "Flagged (Critical)", active: true },
-  { key: "needs_review", label: "Needs Review", active: false },
-  { key: "clean", label: "Cleared", active: false },
+  { key: "all", label: "All Candidates" },
+  { key: "flagged", label: "Flagged (Critical)" },
+  { key: "needs_review", label: "Needs Review" },
+  { key: "clean", label: "Cleared / Dismissed" },
 ];
 
 export default function RingList({ onSelectRing, onOpenIngest }) {
   const [rings, setRings] = useState(null);
   const [error, setError] = useState(false);
-  const [activeStatus, setActiveStatus] = useState("flagged");
+  const [activeStatus, setActiveStatus] = useState("all");
   const [scoreFilter, setScoreFilter] = useState("all");
   const [page, setPage] = useState(1);
 
@@ -37,7 +38,13 @@ export default function RingList({ onSelectRing, onOpenIngest }) {
   const filtered = useMemo(() => {
     if (!rings) return [];
     return rings
-      .filter((r) => r.status === activeStatus)
+      .filter((r) => {
+        if (activeStatus === "all") return true;
+        if (activeStatus === "flagged") return r.status === "flagged" || r.status === "confirmed_fraud";
+        if (activeStatus === "needs_review") return r.status === "needs_review";
+        if (activeStatus === "clean") return r.status === "clean" || r.status === "dismissed_fp";
+        return true;
+      })
       .filter((r) => {
         if (scoreFilter === "08") return r.ring_score >= 0.8;
         if (scoreFilter === "05") return r.ring_score >= 0.5 && r.ring_score < 0.8;
@@ -158,22 +165,22 @@ export default function RingList({ onSelectRing, onOpenIngest }) {
           <div className="py-16 text-center text-on-surface-variant">No rings match the current filters.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse whitespace-nowrap text-left">
+            <table className="w-full min-w-[820px] border-collapse whitespace-nowrap text-left">
               <thead>
                 <tr className="border-b border-outline-variant bg-surface-container-lowest/50">
-                  <th className="px-5 py-4 pr-6 pl-6 text-title-sm font-title-sm font-medium text-on-surface-variant">
+                  <th className="px-4 py-3 text-body-sm font-medium text-on-surface-variant">
                     <div className="flex cursor-pointer items-center gap-1 transition-colors hover:text-primary">
                       Ring ID <Icon name="arrow_downward" className="text-[14px]" />
                     </div>
                   </th>
-                  <th className="px-5 py-4 text-title-sm font-title-sm font-medium text-on-surface-variant">Status</th>
-                  <th className="px-5 py-4 text-title-sm font-title-sm font-medium text-on-surface-variant">Accounts</th>
-                  <th className="px-5 py-4 text-title-sm font-title-sm font-medium text-on-surface-variant">Est. Exposure</th>
-                  <th className="w-[200px] px-5 py-4 text-title-sm font-title-sm font-medium text-on-surface-variant">
+                  <th className="px-4 py-3 text-body-sm font-medium text-on-surface-variant">Status</th>
+                  <th className="px-4 py-3 text-body-sm font-medium text-on-surface-variant">Accounts</th>
+                  <th className="px-4 py-3 text-body-sm font-medium text-on-surface-variant">Est. Exposure</th>
+                  <th className="w-[160px] px-4 py-3 text-body-sm font-medium text-on-surface-variant">
                     Risk Probability
                   </th>
-                  <th className="px-5 py-4 text-title-sm font-title-sm font-medium text-on-surface-variant">Primary Signal</th>
-                  <th className="px-5 py-4 pr-6 pl-6 text-title-sm font-title-sm font-medium text-on-surface-variant">Detected</th>
+                  <th className="px-4 py-3 text-body-sm font-medium text-on-surface-variant">Primary Signals</th>
+                  <th className="px-4 py-3 text-body-sm font-medium text-on-surface-variant">Detected</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/50 text-body-md font-body-md">
@@ -189,10 +196,10 @@ export default function RingList({ onSelectRing, onOpenIngest }) {
                       onClick={() => onSelectRing(ring.component_id)}
                       className="group relative cursor-pointer transition-colors hover:bg-surface-container-high"
                     >
-                      <td className="px-5 py-4 pr-6 pl-6">
+                      <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <span
-                            className={`absolute left-0 h-8 w-1 rounded-full transition-opacity ${
+                            className={`absolute left-0 h-7 w-1 rounded-full transition-opacity ${
                               ring.ring_score >= 0.8 ? "bg-error" : ring.ring_score >= 0.5 ? "bg-tertiary" : "bg-outline-variant"
                             } opacity-0 group-hover:opacity-100`}
                           />
@@ -203,39 +210,39 @@ export default function RingList({ onSelectRing, onOpenIngest }) {
                           </span>
                         </div>
                       </td>
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-2">
-                          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-code-sm text-code-sm font-medium uppercase tracking-wider ${meta.cls}`}>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-code-sm text-[11px] font-medium uppercase tracking-wider ${meta.cls}`}>
                             {ring.status === "clean" ? (
-                              <Icon name="check" className="text-[12px]" />
+                              <Icon name="check" className="text-[11px]" />
                             ) : (
                               <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
                             )}
                             {meta.label}
                           </span>
                           {decision && (
-                            <span className="rounded bg-surface-container-highest px-2 py-0.5 font-code-sm text-[10px] font-semibold text-on-surface border border-outline">
+                            <span className="rounded bg-surface-container-highest px-1.5 py-0.5 font-code-sm text-[10px] font-semibold text-on-surface border border-outline">
                               {decision.action === "CONFIRM_FRAUD" ? "✓ Confirmed" : "✗ Dismissed"}
                             </span>
                           )}
                         </div>
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="px-4 py-3">
                         <span className="font-data-mono font-semibold text-on-surface">
-                          {ring.size?.toLocaleString()} accounts
+                          {ring.size?.toLocaleString()} accts
                         </span>
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="px-4 py-3">
                         <span className="font-code-sm font-semibold text-tertiary">
                           {formatCurrency(ring.estimated_exposure_gmv)}
                         </span>
                       </td>
-                      <td className="w-[200px] px-5 py-4">
-                        <div className="flex w-full max-w-[170px] items-center gap-3">
-                          <span className={`w-10 font-data-mono font-bold ${scoreTone(ring.ring_score)}`}>
+                      <td className="w-[160px] px-4 py-3">
+                        <div className="flex w-full max-w-[140px] items-center gap-2">
+                          <span className={`w-9 font-data-mono text-[12px] font-bold ${scoreTone(ring.ring_score)}`}>
                             {formatScoreProb(ring.ring_score)}
                           </span>
-                          <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-container">
+                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-container">
                             <div
                               className={`h-full rounded-full ${scoreTrack(ring.ring_score)} ${ring.ring_score >= 0.8 ? "shadow-glow-error" : ""}`}
                               style={{ width: `${Math.round(ring.ring_score * 100)}%` }}
@@ -243,24 +250,24 @@ export default function RingList({ onSelectRing, onOpenIngest }) {
                           </div>
                         </div>
                       </td>
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-2">
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           {signals && signals.length > 0 ? (
                             signals.map((s) => (
-                              <span key={s} className="flex items-center gap-1.5 rounded-md border border-outline-variant bg-surface-container px-2 py-1 font-code-sm text-code-sm text-on-surface-variant">
-                                <Icon name={signalIcon(s)} className="text-[14px]" />
+                              <span key={s} className="flex items-center gap-1 rounded border border-outline-variant bg-surface-container px-1.5 py-0.5 font-code-sm text-[10px] text-on-surface-variant">
+                                <Icon name={signalIcon(s)} className="text-[12px]" />
                                 {signalLabel(s)}
                               </span>
                             ))
                           ) : (
-                            <span className="flex items-center gap-1.5 rounded-md border border-outline-variant bg-surface-container px-2 py-1 font-code-sm text-code-sm text-outline">
-                              <Icon name="info" className="text-[14px]" />
+                            <span className="flex items-center gap-1 rounded border border-outline-variant bg-surface-container px-1.5 py-0.5 font-code-sm text-[10px] text-outline">
+                              <Icon name="info" className="text-[12px]" />
                               Pattern Normal
                             </span>
                           )}
                         </div>
                       </td>
-                      <td className="px-5 py-4 pr-6 pl-6 font-data-mono text-on-surface-variant text-[13px]">
+                      <td className="px-4 py-3 font-code-sm text-on-surface-variant text-[12px]">
                         {timeAgo(ring.detected_at)}
                       </td>
                     </tr>
