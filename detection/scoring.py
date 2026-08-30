@@ -80,12 +80,14 @@ RING_SIZE_MAX = 30
 # signup burst).  Has-referral-cycle bypasses this gate.
 MIN_TEMPORAL_SCORE = 0.30
 
-# Review band: candidates with scores in [REVIEW_SCORE_MIN, threshold)
-# get routed to human review instead of being silently passed/failed.
-# This catches borderline cases (e.g., subtler rings with weaker signals)
-# without lowering the auto-flag threshold and risking false positives.
-REVIEW_SCORE_MIN = 0.25
+# Operational decision bands (aligned across API, evaluation, and dashboard):
+# >= 0.80: Critical / Auto-Flagged ring
+# 0.50 - 0.79: Borderline / Human Review queue
+# < 0.50: Cleared / Clean
+AUTO_FLAG_THRESHOLD = 0.80
+REVIEW_SCORE_MIN = 0.50
 REVIEW_TEMPORAL_MIN = 0.15  # lower temporal bar for review vs auto-flag
+DEFAULT_THRESHOLD = AUTO_FLAG_THRESHOLD
 
 # Exponential decay half-life for temporal scoring (minutes)
 HALF_LIFE_MINUTES = 360.0
