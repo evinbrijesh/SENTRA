@@ -70,6 +70,9 @@ def _compute_detection(data_dir: str) -> dict:
     for category in ("flagged", "needs_review", "clean"):
         for ring in results[category]:
             comp = comp_by_idx.get(ring["component_id"], {})
+            # Attach structural info before calling explain_ring so the
+            # explainer can build shared-device / shared-IP reasons.
+            ring["structural"] = _struct_for(comp)
             exp = explain_ring(ring, accounts_df, G)
             ring_obj = {
                 "component_id": ring["component_id"],
@@ -79,7 +82,7 @@ def _compute_detection(data_dir: str) -> dict:
                 "detected_at": detected_at,
                 "has_referral_cycle": ring.get("has_referral_cycle", False),
                 "temporal": ring.get("temporal", {}),
-                "structural": _struct_for(comp),
+                "structural": ring["structural"],
                 "sub_scores": ring.get("sub_scores", {}),
                 "primary_signals": _primary_signals(exp),
                 "members": ring["members"],

@@ -204,19 +204,25 @@ def explain_ring(
     # ── SHAP values (ML model explainability) ────────────────────
     shap_values = None
     if graph is not None and HAS_SHAP:
+        # Reconstruct the component dict from the real structural and
+        # sub_score data so SHAP sees the same features the model scored.
+        density_sub = sub_scores.get("density", 0)
+        density_weight = WEIGHTS.get("density", 1) or 1
         shap_values = _compute_shap_values(
-            {"component_id": flagged.get("component_id"),
-             "size": size,
-             "density": flagged.get("sub_scores", {}).get("density", 0) / WEIGHTS.get("density", 1) if WEIGHTS.get("density", 1) else 0,
-             "unique_devices": structural.get("unique_devices", 0),
-             "unique_ips": structural.get("unique_ips", 0),
-             "shared_device_edges": structural.get("shared_device_edges", 0),
-             "shared_ip_edges": structural.get("shared_ip_edges", 0),
-             "referral_edges": structural.get("referral_edges", 0),
-             "has_referral_cycle": flagged.get("has_referral_cycle", False),
-             "members": members},
+            {
+                "component_id": flagged.get("component_id"),
+                "size": size,
+                "density": density_sub / density_weight,
+                "unique_devices": structural.get("unique_devices", 0),
+                "unique_ips": structural.get("unique_ips", 0),
+                "shared_device_edges": structural.get("shared_device_edges", 0),
+                "shared_ip_edges": structural.get("shared_ip_edges", 0),
+                "referral_edges": structural.get("referral_edges", 0),
+                "has_referral_cycle": flagged.get("has_referral_cycle", False),
+                "members": members,
+            },
             accounts_df,
-            graph
+            graph,
         )
 
     # ── Summary ─────────────────────────────────────────────────

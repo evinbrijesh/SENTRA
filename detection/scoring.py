@@ -15,6 +15,7 @@ Feature extraction is handled by detection/features.py (13-dim vector).
 Explainability is handled by detection/explain.py (feature importance + SHAP).
 """
 
+import json
 import joblib
 import os
 from pathlib import Path
@@ -252,7 +253,7 @@ def predict_ml_score(
 
 def detect_rings(
     data: dict[str, pd.DataFrame] = None,
-    threshold: float = 0.45,
+    threshold: float = None,
     data_dir: str = None,
     use_ml: bool = True,
 ) -> dict:
@@ -277,6 +278,8 @@ def detect_rings(
     If use_ml=True (default), uses the trained ML model for scoring.
     If use_ml=False, uses the rule-based baseline.
     """
+    if threshold is None:
+        threshold = DEFAULT_THRESHOLD
     if data is None:
         data = load_csvs(data_dir)
 
@@ -384,7 +387,6 @@ def detect_rings(
 
 
 if __name__ == "__main__":
-    import json
     import argparse
     from detection.explain import explain_ring
 
