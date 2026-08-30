@@ -1,3 +1,5 @@
+import Icon from "./Icon.jsx";
+
 export default function TopNav({ systemOk = true, onOpenAlerts, unreadAlertsCount = 0 }) {
   return (
     <header className="fixed right-0 top-0 z-30 flex h-16 w-[calc(100%-260px)] items-center justify-between border-b border-outline-variant bg-surface/80 px-container-padding backdrop-blur-md">

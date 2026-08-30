@@ -49,3 +49,6 @@ data/raw_hard/
 data/output/
 # Runtime ingest uploads (created by POST /ingest)
 data/uploads/
+# Runtime audit ledger and analyst feedback
+data/audit/
+data/feedback/

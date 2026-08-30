@@ -8,6 +8,9 @@ import RingDetailScreen from "./screens/RingDetailScreen.jsx";
 import MetricsScreen from "./screens/MetricsScreen.jsx";
 import AuditTrailScreen from "./screens/AuditTrailScreen.jsx";
 import IngestionScreen from "./screens/IngestionScreen.jsx";
+import NetworkMapScreen from "./screens/NetworkMapScreen.jsx";
+
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 
 export default function App() {
   const [route, setRoute] = useState({ name: "dashboard" });
@@ -19,6 +22,7 @@ export default function App() {
   const navTo = (key) => {
     if (key === "dashboard") navigate("dashboard");
     else if (key === "rings") navigate("rings");
+    else if (key === "network") navigate("network");
     else if (key === "metrics") navigate("metrics");
     else if (key === "audit") navigate("audit");
     else if (key === "upload") navigate("upload");
@@ -31,6 +35,7 @@ export default function App() {
   let content;
   const activeKey =
     route.name === "dashboard" ? "dashboard"
+    : route.name === "network" ? "network"
     : route.name === "metrics" ? "metrics"
     : route.name === "audit" ? "audit"
     : route.name === "upload" ? "upload"
@@ -42,6 +47,7 @@ export default function App() {
       <DashboardScreen
         onGoRings={() => navigate("rings")}
         onGoAudit={() => navigate("audit")}
+        onGoMetrics={() => navigate("metrics")}
         onSelectRing={(id) => navigate("ring", { ringId: id })}
       />
     );
@@ -50,6 +56,12 @@ export default function App() {
       <RingList
         onSelectRing={(id) => navigate("ring", { ringId: id })}
         onOpenIngest={() => navigate("upload")}
+      />
+    );
+  } else if (route.name === "network") {
+    content = (
+      <NetworkMapScreen
+        onSelectRing={(id) => navigate("ring", { ringId: id })}
       />
     );
   } else if (route.name === "ring") {
@@ -75,7 +87,9 @@ export default function App() {
         />
         <main className="w-full flex-1 overflow-y-auto pt-16">
           <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 p-container-padding pb-12">
-            {content}
+            <ErrorBoundary onReset={() => navigate("rings")}>
+              {content}
+            </ErrorBoundary>
           </div>
         </main>
       </div>

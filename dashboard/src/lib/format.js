@@ -114,8 +114,10 @@ const STATUS_META = {
   needs_review: { label: "Needs Review", cls: "bg-tertiary-container/10 border-tertiary/20 text-tertiary-fixed-dim", dot: "bg-tertiary-fixed-dim" },
   review: { label: "Needs Review", cls: "bg-tertiary-container/10 border-tertiary/20 text-tertiary-fixed-dim", dot: "bg-tertiary-fixed-dim" },
   clean: { label: "Cleared", cls: "bg-surface-container-high border-outline-variant text-on-surface-variant", dot: "check" },
-  confirmed: { label: "Confirmed Fraud", cls: "bg-error text-white border-error", dot: "bg-error" },
+  confirmed: { label: "Confirmed Fraud", cls: "bg-error/20 border-error/40 text-error font-bold", dot: "bg-error" },
+  confirmed_fraud: { label: "Confirmed Fraud", cls: "bg-error/20 border-error/40 text-error font-bold", dot: "bg-error" },
   dismissed: { label: "Dismissed (FP)", cls: "bg-surface-container-highest text-on-surface-variant border-outline", dot: "check" },
+  dismissed_fp: { label: "Dismissed (FP)", cls: "bg-surface-container-highest text-on-surface-variant border-outline", dot: "check" },
 };
 
 export function statusMeta(status) {

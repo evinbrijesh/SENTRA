@@ -24,6 +24,10 @@ export async function fetchSubgraph(id) {
   return req(`/api/rings/${encodeURIComponent(id)}/subgraph`);
 }
 
+export async function fetchGlobalGraph() {
+  return req("/api/graph/global");
+}
+
 export async function ingestBatch(file) {
   const form = new FormData();
   form.append("file", file);
@@ -35,8 +39,9 @@ export async function ingestBatch(file) {
   return res.json();
 }
 
-export async function fetchMetrics() {
-  return req("/api/evaluate");
+export async function fetchMetrics(split) {
+  const query = split ? `?split=${encodeURIComponent(split)}` : "";
+  return req(`/api/evaluate${query}`);
 }
 
 export async function fetchRingsSummary() {

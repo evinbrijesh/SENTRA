@@ -3,6 +3,7 @@ import Icon from "./Icon.jsx";
 const NAV = [
   { key: "dashboard", label: "Dashboard", icon: "dashboard" },
   { key: "rings", label: "Rings", icon: "hub" },
+  { key: "network", label: "Network Map", icon: "scatter_plot" },
   { key: "metrics", label: "Metrics", icon: "monitoring" },
   { key: "audit", label: "Audit Trail", icon: "history" },
   { key: "upload", label: "Upload", icon: "upload_file" },
