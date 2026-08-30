@@ -107,14 +107,7 @@ def init_ledger() -> None:
                     )
                     rows = cur.fetchall()
                     for r in rows:
-                        block = dict(r[7])  # payload
-                        block["block_index"] = r[0]
-                        block["event_id"] = r[1]
-                        block["event_hash"] = r[2]
-                        block["prev_hash"] = r[3]
-                        block["action_type"] = r[4]
-                        block["actor"] = r[5]
-                        block["timestamp"] = str(r[6])
+                        block = dict(r[7])  # payload contains all canonical hashed fields
                         chain.append(block)
             except Exception as e:  # noqa: BLE001
                 log.warning("Failed loading audit ledger from Postgres: %s", e)
@@ -127,6 +120,26 @@ def init_ledger() -> None:
         log.info("Audit Ledger initialized with %d cryptographically chained blocks", len(_CHAIN_CACHE))
 
 
+def clear_ledger() -> None:
+    """Clear all blocks from memory, disk, and Postgres (used to purge placeholder test records)."""
+    global _CHAIN_CACHE, _INITIALIZED
+    with _LEDGER_LOCK:
+        _CHAIN_CACHE = []
+        _INITIALIZED = True
+        if AUDIT_JSONL_PATH.exists():
+            try:
+                AUDIT_JSONL_PATH.unlink()
+            except Exception:
+                pass
+        if db.pg_available():
+            try:
+                with db.pg_cursor() as cur:
+                    _ensure_pg_table(cur.connection)
+                    cur.execute("TRUNCATE TABLE audit_ledger")
+            except Exception as e:
+                log.warning("Failed truncating audit_ledger in Postgres: %s", e)
+
+
 def append_event(
     action_type: str,
     actor: str,
@@ -135,6 +148,7 @@ def append_event(
     evidence: dict | None = None,
     status: str = "COMPLETED",
     metadata: dict | None = None,
+    timestamp: str | None = None,
 ) -> dict:
     """Append a new tamper-evident event to the cryptographic audit ledger."""
     init_ledger()
@@ -142,7 +156,7 @@ def append_event(
         block_index = len(_CHAIN_CACHE)
         prev_hash = _CHAIN_CACHE[-1]["event_hash"] if _CHAIN_CACHE else GENESIS_HASH
 
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_iso = timestamp or datetime.now(timezone.utc).isoformat()
         event_id = f"evt-{block_index:06d}-{int(datetime.now(timezone.utc).timestamp())}"
 
         # Model / policy versioning for regulator replay

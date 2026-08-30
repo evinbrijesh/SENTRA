@@ -173,18 +173,23 @@ def record_decision(ring_id: str, req: DecisionRequest):
         actor=f"{req.analyst_id} ({req.analyst_role})",
         summary=summary_text,
         ring_id=str(ring_id),
-        evidence={
-            "ring_score": ring.get("ring_score"),
-            "size": ring.get("size"),
+        details={
+            "action": req.action,
+            "analyst_id": req.analyst_id,
+            "analyst_role": req.analyst_role,
             "notes": req.notes,
-            "decision": req.action,
+            "ring_score": ring.get("ring_score"),
+            "ring_size": ring.get("size"),
+            "member_count": len(ring.get("members", [])),
         },
-        status="CONFIRMED" if req.action == "CONFIRM_FRAUD" else "DISMISSED",
     )
 
+    # Invalidate detection cache so all endpoints reflect the updated status immediately
+    rings_service.clear_detection_cache()
+
     return {
-        "status": "success",
-        "message": "Decision recorded and cryptographically sealed into audit ledger",
+        "status": "ok",
+        "message": f"Decision '{req.action}' recorded and cryptographically sealed into audit ledger",
         "decision": decision_record,
     }
 
