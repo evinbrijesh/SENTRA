@@ -11,7 +11,9 @@ Neo4j is used for the relationship/subgraph reads (see neo4j_queries) so the
 graph database is genuinely exercised in the demo.
 """
 
+import copy
 import logging
+import threading
 from datetime import datetime, timezone
 from functools import lru_cache
 
@@ -26,17 +28,24 @@ DEFAULT_DATA_DIR = "data/raw"
 # Full detection is expensive (CSV load + graph build + ML). Cache it per data
 # dir so /rings, /rings/{id}, and /rings/{id}/subgraph don't each re-run it.
 # Callers may mutate the returned dict, so we hand out a fresh deep copy.
-_DETECTION_CACHE = {}
+_DETECTION_CACHE: dict = {}
+_CACHE_LOCK = threading.Lock()
 
 
 def _cached_run_detection(data_dir: str) -> dict:
-    if data_dir not in _DETECTION_CACHE:
-        _DETECTION_CACHE[data_dir] = _compute_detection(data_dir)
+    # Fast path — already cached (no lock needed for read once populated).
+    if data_dir in _DETECTION_CACHE:
+        return _DETECTION_CACHE[data_dir]
+    # Slow path — compute under lock so only one thread runs detection per dir.
+    with _CACHE_LOCK:
+        if data_dir not in _DETECTION_CACHE:
+            _DETECTION_CACHE[data_dir] = _compute_detection(data_dir)
     return _DETECTION_CACHE[data_dir]
 
 
 def clear_detection_cache() -> None:
-    _DETECTION_CACHE.clear()
+    with _CACHE_LOCK:
+        _DETECTION_CACHE.clear()
 
 
 def _struct_for(comp: dict) -> dict:

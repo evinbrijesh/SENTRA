@@ -113,7 +113,7 @@ def load_to_postgres(conn, data: dict[str, pd.DataFrame], batch: str = "default"
             "VALUES (%s, %s, %s, %s) ON CONFLICT (account_id) DO NOTHING",
             (row["account_id"], row.get("signup_time"), row.get("kyc_status"), batch),
         )
-    counts["accounts"] = cur.rowcount
+        counts["accounts"] += cur.rowcount  # 1 if inserted, 0 if skipped
 
     for _, row in data["transactions"].iterrows():
         cur.execute(
@@ -121,7 +121,7 @@ def load_to_postgres(conn, data: dict[str, pd.DataFrame], batch: str = "default"
             "VALUES (%s, %s, %s, %s, %s) ON CONFLICT (transaction_id) DO NOTHING",
             (row["transaction_id"], row["account_id"], row.get("amount"), row.get("timestamp"), batch),
         )
-    counts["transactions"] = cur.rowcount
+        counts["transactions"] += cur.rowcount
 
     for _, row in data["payment_methods"].iterrows():
         cur.execute(
@@ -130,7 +130,7 @@ def load_to_postgres(conn, data: dict[str, pd.DataFrame], batch: str = "default"
             "ON CONFLICT (account_id, payment_method_id) DO NOTHING",
             (row["account_id"], row.get("payment_method_type"), row.get("payment_method_id"), batch),
         )
-    counts["payment_methods"] = cur.rowcount
+        counts["payment_methods"] += cur.rowcount
 
     conn.commit()
     return counts
@@ -193,7 +193,8 @@ def load_to_neo4j(driver, data: dict[str, pd.DataFrame], batch: str = "default")
             is_ring = bool(row.get("is_ring_referral"))
             ring_id = row.get("ring_id")
             session.run(
-                "MATCH (a1:Account {account_id: $ref}), (a2:Account {account_id: $refd}) "
+                "MATCH (a1:Account {account_id: $ref}) "
+                "MATCH (a2:Account {account_id: $refd}) "
                 "MERGE (a1)-[r:REFERRED {batch: $batch}]->(a2) "
                 "SET r.is_ring_referral = $ring, r.ring_id = $rid",
                 ref=row["referrer_id"], refd=row["referred_id"],

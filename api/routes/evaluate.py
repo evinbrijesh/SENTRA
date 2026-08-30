@@ -8,7 +8,6 @@ always consistent with the actual detection run.
 """
 
 import logging
-from functools import lru_cache
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -22,41 +21,13 @@ router = APIRouter()
 DATA_DIR = Path("data")
 TEST_DIR = DATA_DIR / "raw_test"
 
-
-@lru_cache(maxsize=4)
-def _test_metrics() -> dict:
-    """Run detection on the held-out test split and evaluate against truth."""
-    from api.rings_service import run_detection
-
-    flagged_path = Path("data/output/") / "api_test_flagged.json"
-    flagged_path.parent.mkdir(parents=True, exist_ok=True)
-
-    run = run_detection(str(TEST_DIR))
-    import json
-    # evaluation.evaluate reads a dict-formatted detection output {flagged, needs_review}
-    output = {
-        "flagged": [
-            {"component_id": r["component_id"], "members": r["members"]} for r in run["flagged"]
-        ],
-        "needs_review": [
-            {"component_id": r["component_id"], "members": r["members"]} for r in run["needs_review"]
-        ],
-    }
-    with open(flagged_path, "w") as f:
-        json.dump(output, f)
-
-    gt = DATA_DIR / "labels" / "ground_truth_test.json"
-    if not gt.exists():
-        raise FileNotFoundError(f"Ground truth not found: {gt}")
-
-    total = json.loads(gt.read_text()).get("total_accounts", 500)
-    return run_eval(str(flagged_path), str(gt), total_accounts=total)
+_EVAL_CACHE: dict = {}
 
 
 @router.get("/evaluate")
 def get_evaluate():
     try:
-        metrics = _test_metrics()
+        metrics = _get_test_metrics()
     except Exception as e:  # noqa: BLE001
         log.error("evaluate failed: %s", e)
         raise HTTPException(status_code=500, detail=f"Evaluation failed: {e}")
@@ -75,3 +46,42 @@ def get_evaluate():
         "false_positive_cost": cost,
         "honest_note": "Reported on the held-out test split only; thresholds tuned on dev.",
     }
+
+
+def _get_test_metrics() -> dict:
+    """Run detection on the held-out test split and evaluate against truth.
+    Cached in-process; uses a unique output path per dir to avoid concurrent
+    write collisions when multiple requests arrive before the cache warms.
+    """
+    data_dir = str(TEST_DIR)
+    if data_dir in _EVAL_CACHE:
+        return _EVAL_CACHE[data_dir]
+
+    from api.rings_service import run_detection
+    import json
+
+    dir_tag = abs(hash(data_dir)) % 10_000
+    flagged_path = DATA_DIR / "output" / f"api_test_flagged_{dir_tag}.json"
+    flagged_path.parent.mkdir(parents=True, exist_ok=True)
+
+    run = run_detection(data_dir)
+    output = {
+        "flagged": [
+            {"component_id": r["component_id"], "members": r["members"]} for r in run["flagged"]
+        ],
+        "needs_review": [
+            {"component_id": r["component_id"], "members": r["members"]} for r in run["needs_review"]
+        ],
+    }
+    with open(flagged_path, "w") as f:
+        json.dump(output, f)
+
+    gt = DATA_DIR / "labels" / "ground_truth_test.json"
+    if not gt.exists():
+        raise FileNotFoundError(f"Ground truth not found: {gt}")
+
+    total = json.loads(gt.read_text()).get("total_accounts", 500)
+    result = run_eval(str(flagged_path), str(gt), total_accounts=total)
+    _EVAL_CACHE[data_dir] = result
+    return result
+
