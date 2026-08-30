@@ -36,6 +36,23 @@ def list_rings():
     return rings
 
 
+@router.get("/rings/summary")
+def get_rings_summary():
+    """Return live operational batch summary (total monitored accounts, transactions, GMV exposure)."""
+    try:
+        run = rings_service.run_detection(_data_dir())
+        return {
+            "operational_summary": run.get("operational_summary", {}),
+            "flagged_count": len(run.get("flagged", [])),
+            "needs_review_count": len(run.get("needs_review", [])),
+            "clean_count": len(run.get("clean", [])),
+            "detected_at": run.get("detected_at"),
+        }
+    except Exception as e:  # noqa: BLE001
+        log.error("failed to get summary: %s", e)
+        raise HTTPException(status_code=500, detail=f"Summary failed: {e}")
+
+
 @router.get("/rings/{ring_id}")
 def get_ring(ring_id: str):
     ring = rings_service.find_ring(_data_dir(), ring_id)

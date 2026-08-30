@@ -24,8 +24,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api import db
+from api.routes import alerts as alerts_routes
 from api.routes import audit as audit_routes
 from api.routes import evaluate as evaluate_routes
+from api.routes import feedback as feedback_routes
 from api.routes import ingest as ingest_routes
 from api.routes import rings as rings_routes
 
@@ -89,12 +91,26 @@ app.include_router(rings_routes.router)
 app.include_router(ingest_routes.router)
 app.include_router(evaluate_routes.router)
 app.include_router(audit_routes.router)
+app.include_router(alerts_routes.router)
+app.include_router(feedback_routes.router)
 
 
 @app.get("/")
 def root():
     return {
         "name": "Sentra Fraud-Ring Detector",
-        "endpoints": ["/health", "/rings", "/rings/{id}", "/rings/{id}/subgraph", "/ingest", "/evaluate", "/audit"],
+        "endpoints": [
+            "/health",
+            "/rings",
+            "/rings/{id}",
+            "/rings/{id}/subgraph",
+            "/rings/{id}/decision",
+            "/ingest",
+            "/evaluate",
+            "/audit",
+            "/audit/verify",
+            "/alerts",
+            "/alerts/webhook/test",
+        ],
         "docs": "/docs",
     }

@@ -1,6 +1,4 @@
-import Icon from "./Icon.jsx";
-
-export default function TopNav({ systemOk = true }) {
+export default function TopNav({ systemOk = true, onOpenAlerts, unreadAlertsCount = 0 }) {
   return (
     <header className="fixed right-0 top-0 z-30 flex h-16 w-[calc(100%-260px)] items-center justify-between border-b border-outline-variant bg-surface/80 px-container-padding backdrop-blur-md">
       <div className="flex max-w-md flex-1 items-center">
@@ -21,8 +19,17 @@ export default function TopNav({ systemOk = true }) {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <button className="rounded-lg p-2 text-on-surface-variant transition-all hover:bg-surface-container-high hover:text-primary">
+          <button
+            onClick={onOpenAlerts}
+            title="Incident Alerts"
+            className="relative rounded-lg p-2 text-on-surface-variant transition-all hover:bg-surface-container-high hover:text-primary"
+          >
             <Icon name="notifications" />
+            {unreadAlertsCount > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-error px-1 text-[10px] font-bold text-white shadow-sm animate-pulse">
+                {unreadAlertsCount}
+              </span>
+            )}
           </button>
           <button className="rounded-lg p-2 text-on-surface-variant transition-all hover:bg-surface-container-high hover:text-primary">
             <Icon name="dns" />
@@ -33,9 +40,12 @@ export default function TopNav({ systemOk = true }) {
         </div>
         <div className="h-6 w-px bg-outline-variant" />
         <div className="flex items-center gap-4">
-          <button className="flex items-center gap-2 rounded-lg border border-outline-variant bg-surface-container-high px-4 py-2 text-body-sm font-body-sm font-medium text-on-surface transition-all hover:border-primary hover:text-primary">
+          <button
+            onClick={onOpenAlerts}
+            className="flex items-center gap-2 rounded-lg border border-outline-variant bg-surface-container-high px-4 py-2 text-body-sm font-body-sm font-medium text-on-surface transition-all hover:border-primary hover:text-primary"
+          >
             <Icon name="travel_explore" className="text-lg" />
-            Investigate
+            Incident Alert Center
           </button>
           <button className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-outline-variant bg-surface-container-highest transition-all hover:ring-2 hover:ring-primary hover:ring-offset-2 hover:ring-offset-surface">
             <Icon name="person" className="text-base text-on-surface-variant" />

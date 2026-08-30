@@ -69,11 +69,53 @@ export function signalLabel(signal) {
   return map[signal] || signal.replace(/_/g, " ");
 }
 
+export function formatCurrency(amount) {
+  if (amount == null || Number.isNaN(amount)) return "₹0";
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+export function formatScoreProb(score) {
+  if (score == null || Number.isNaN(score)) return "0.00";
+  return Number(score).toFixed(2);
+}
+
+export function scoreBandMeta(score) {
+  const num = Number(score) || 0;
+  if (num >= 0.8) {
+    return {
+      band: "CRITICAL",
+      label: "Critical (≥0.80)",
+      cls: "text-error border-error/30 bg-error/10",
+      tone: "error",
+    };
+  }
+  if (num >= 0.5) {
+    return {
+      band: "REVIEW",
+      label: "Review (0.50–0.79)",
+      cls: "text-tertiary border-tertiary/30 bg-tertiary/10",
+      tone: "tertiary",
+    };
+  }
+  return {
+    band: "CLEARED",
+    label: "Cleared (<0.50)",
+    cls: "text-on-surface-variant border-outline-variant bg-surface-container",
+    tone: "clean",
+  };
+}
+
 const STATUS_META = {
   flagged: { label: "Flagged", cls: "bg-error-container/20 border-error/20 text-error", dot: "bg-error animate-pulse" },
-  needs_review: { label: "Review", cls: "bg-tertiary-container/10 border-tertiary/20 text-tertiary-fixed-dim", dot: "bg-tertiary-fixed-dim" },
-  review: { label: "Review", cls: "bg-tertiary-container/10 border-tertiary/20 text-tertiary-fixed-dim", dot: "bg-tertiary-fixed-dim" },
+  needs_review: { label: "Needs Review", cls: "bg-tertiary-container/10 border-tertiary/20 text-tertiary-fixed-dim", dot: "bg-tertiary-fixed-dim" },
+  review: { label: "Needs Review", cls: "bg-tertiary-container/10 border-tertiary/20 text-tertiary-fixed-dim", dot: "bg-tertiary-fixed-dim" },
   clean: { label: "Cleared", cls: "bg-surface-container-high border-outline-variant text-on-surface-variant", dot: "check" },
+  confirmed: { label: "Confirmed Fraud", cls: "bg-error text-white border-error", dot: "bg-error" },
+  dismissed: { label: "Dismissed (FP)", cls: "bg-surface-container-highest text-on-surface-variant border-outline", dot: "check" },
 };
 
 export function statusMeta(status) {

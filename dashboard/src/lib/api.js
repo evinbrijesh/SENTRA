@@ -39,6 +39,45 @@ export async function fetchMetrics() {
   return req("/api/evaluate");
 }
 
+export async function fetchRingsSummary() {
+  return req("/api/rings/summary");
+}
+
 export async function fetchAudit() {
   return req("/api/audit");
+}
+
+export async function verifyAuditChain() {
+  return req("/api/audit/verify");
+}
+
+export async function fetchAlerts() {
+  return req("/api/alerts");
+}
+
+export async function acknowledgeAlert(alertId) {
+  return req(`/api/alerts/${encodeURIComponent(alertId)}/ack`, { method: "POST" });
+}
+
+export async function triggerWebhookTest(endpointUrl, channel) {
+  return req("/api/alerts/webhook/test", {
+    method: "POST",
+    body: JSON.stringify({ endpoint_url: endpointUrl, channel: channel }),
+  });
+}
+
+export async function submitDecision(ringId, { action, analystId, notes, analystRole }) {
+  return req(`/api/rings/${encodeURIComponent(ringId)}/decision`, {
+    method: "POST",
+    body: JSON.stringify({
+      action,
+      analyst_id: analystId || "analyst_rzp_ops_01",
+      notes: notes || "",
+      analyst_role: analystRole || "L2_RISK_INVESTIGATOR",
+    }),
+  });
+}
+
+export async function fetchDecisions() {
+  return req("/api/feedback/decisions");
 }
