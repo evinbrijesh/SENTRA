@@ -64,20 +64,43 @@ export default function DashboardScreen({ onGoRings, onSelectRing }) {
   const [rings, setRings] = useState(null);
   const [metrics, setMetrics] = useState(null);
   const [err, setErr] = useState(null);
+  const [retrying, setRetrying] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([fetchRings(), fetchMetrics()])
-      .then(([r, m]) => {
-        if (cancelled) return;
-        setRings(r);
-        setMetrics(m);
-      })
-      .catch((e) => {
-        if (!cancelled) setErr(e.message || "Failed to load dashboard");
-      });
+    let timer = null;
+
+    const MAX_ATTEMPTS = 5;
+    const BASE_DELAY_MS = 3000;
+
+    const tryLoad = (n) => {
+      Promise.all([fetchRings(), fetchMetrics()])
+        .then(([r, m]) => {
+          if (cancelled) return;
+          setRings(r);
+          setMetrics(m);
+          setErr(null);
+          setRetrying(false);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          if (n < MAX_ATTEMPTS) {
+            const delay = BASE_DELAY_MS * Math.pow(2, n - 1); // 3s, 6s, 12s…
+            setRetrying(true);
+            setAttempt(n);
+            timer = setTimeout(() => tryLoad(n + 1), delay);
+          } else {
+            setRetrying(false);
+            setErr("API is not responding — make sure the backend started correctly.");
+          }
+        });
+    };
+
+    tryLoad(1);
     return () => {
       cancelled = true;
+      if (timer) clearTimeout(timer);
     };
   }, []);
 
@@ -100,6 +123,19 @@ export default function DashboardScreen({ onGoRings, onSelectRing }) {
       <div className="flex h-64 flex-col items-center justify-center gap-2 text-on-surface-variant">
         <Icon name="error" className="text-3xl text-error" />
         <p className="font-code-sm text-code-sm">{err}</p>
+      </div>
+    );
+  }
+  if (retrying) {
+    return (
+      <div className="flex h-64 flex-col items-center justify-center gap-3 text-on-surface-variant">
+        <Icon name="sync" className="animate-spin text-3xl text-primary" />
+        <p className="font-code-sm text-code-sm">
+          API starting up… retrying ({attempt}/5)
+        </p>
+        <p className="text-body-sm font-body-sm text-on-surface-variant/60">
+          The backend runs data generation and model training on first boot — this takes ~15 s.
+        </p>
       </div>
     );
   }
