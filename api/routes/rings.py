@@ -29,10 +29,11 @@ def list_rings():
     except Exception as e:  # noqa: BLE001
         log.error("failed to list rings: %s", e)
         raise HTTPException(status_code=500, detail=f"Detection failed: {e}")
-    # Drop heavy fields from the list view for a leaner payload.
+    # Drop the heavy explanation payload (SHAP dicts) from the list view.
+    # members are KEPT: they are cheap (~500 ids total) and are required by the
+    # /graph/global classification overlay and the TopNav account search.
     for r in rings:
         r.pop("explanation", None)
-        r.pop("members", None)
     return rings
 
 
