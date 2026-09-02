@@ -11,12 +11,13 @@ detection/train.py and saved to detection/model/ring_classifier.joblib.
 Rule-based scoring is retained as a baseline for comparison. If the
 ML model underperforms the baseline, the baseline becomes primary.
 
-Feature extraction is handled by detection/features.py (13-dim vector).
+Feature extraction is handled by detection/features.py (16-dim vector).
 Explainability is handled by detection/explain.py (feature importance + SHAP).
 """
 
 import json
 import joblib
+import logging
 import os
 from pathlib import Path
 
@@ -25,6 +26,8 @@ import pandas as pd
 
 from detection.graph_queries import build_graph, find_components, get_candidate_components, load_csvs
 from detection.temporal import compute_cluster_temporal
+
+log = logging.getLogger("detection.scoring")
 
 # ── Model path ──────────────────────────────────────────────
 MODEL_DIR = Path(__file__).parent.parent / "detection" / "model"
@@ -84,10 +87,14 @@ MIN_TEMPORAL_SCORE = 0.30
 # >= 0.80: Critical / Auto-Flagged ring
 # 0.50 - 0.79: Borderline / Human Review queue
 # < 0.50: Cleared / Clean
+# NOTE: AUTO_FLAG_THRESHOLD / REVIEW_* describe the *bands* used for UI triage
+# and rule-based gating. The ML decision threshold is NOT hardcoded here — it
+# is loaded from detection/model/threshold.json above (selected by train.py on
+# the validation slice). Do not assign DEFAULT_THRESHOLD = AUTO_FLAG_THRESHOLD;
+# that would desync the served operating point from the evaluated one.
 AUTO_FLAG_THRESHOLD = 0.80
 REVIEW_SCORE_MIN = 0.50
 REVIEW_TEMPORAL_MIN = 0.15  # lower temporal bar for review vs auto-flag
-DEFAULT_THRESHOLD = AUTO_FLAG_THRESHOLD
 
 # Exponential decay half-life for temporal scoring (minutes)
 HALF_LIFE_MINUTES = 360.0
@@ -214,15 +221,18 @@ def _extract_component_features(
     component: dict,
     accounts_df: pd.DataFrame,
     graph,
+    temporal: dict | None = None,
 ) -> np.ndarray:
     """
-    Extract the 13-dim feature vector for a single component.
+    Extract the 16-dim feature vector for a single component.
 
     Same order as FEATURE_NAMES in detection/features.py.
+    Pass `temporal` (precomputed by detect_rings) to avoid computing the
+    temporal signal twice per candidate.
     """
     from detection.features import FEATURE_NAMES, extract_features_for_component
 
-    result = extract_features_for_component(component, accounts_df, graph)
+    result = extract_features_for_component(component, accounts_df, graph, temporal=temporal)
     return np.array(result["features"], dtype=np.float64)
 
 
@@ -231,6 +241,7 @@ def predict_ml_score(
     accounts_df: pd.DataFrame,
     graph,
     model=None,
+    temporal: dict | None = None,
 ) -> float:
     """
     Get ring probability from the ML model for a single component.
@@ -248,7 +259,7 @@ def predict_ml_score(
         return result["ring_score"]
 
     # Extract features and predict
-    features = _extract_component_features(component, accounts_df, graph)
+    features = _extract_component_features(component, accounts_df, graph, temporal=temporal)
     proba = model.predict_proba([features])[0, 1]
     return round(float(proba), 4)
 
@@ -258,6 +269,8 @@ def detect_rings(
     threshold: float = None,
     data_dir: str = None,
     use_ml: bool = True,
+    graph=None,
+    components: list[dict] = None,
 ) -> dict:
     """
     Full detection pipeline:
@@ -268,6 +281,10 @@ def detect_rings(
     4. Filter to candidates
     5. Score each candidate (ML or rule-based)
     6. Classify into flagged / needs_review / clean
+
+    Callers that already hold the graph and/or components (e.g. rings_service)
+    can pass them via `graph` / `components` to avoid rebuilding — building the
+    graph twice was ~18% of the detection hot path.
 
     Returns:
     - flagged: list of dicts, auto-flagged rings (score >= threshold)
@@ -287,12 +304,13 @@ def detect_rings(
 
     accounts_df = data["accounts"]
 
-    # Build graph and find components
-    G = build_graph(data)
-    components = find_components(G)
+    # Reuse the caller's graph/components when provided
+    G = graph if graph is not None else build_graph(data)
+    if components is None:
+        components = find_components(G)
     candidates = get_candidate_components(components)
 
-    print(f"Found {len(components)} total components, {len(candidates)} candidates")
+    log.info("Found %d total components, %d candidates", len(components), len(candidates))
 
     # Load ML model if using ML scoring
     ml_model = None
@@ -310,8 +328,10 @@ def detect_rings(
         )
 
         if use_ml and ml_model is not None:
-            # Use ML model for scoring
-            ring_score = predict_ml_score(comp, accounts_df, G, ml_model)
+            # Use ML model for scoring. Pass the already-computed temporal
+            # result so extract_features_for_component doesn't recompute it
+            # (temporal was being calculated twice per candidate).
+            ring_score = predict_ml_score(comp, accounts_df, G, ml_model, temporal=temporal)
             result = {
                 "component_id": comp["component_id"],
                 "ring_score": ring_score,
@@ -380,7 +400,7 @@ def detect_rings(
     flagged.sort(key=lambda x: x["ring_score"], reverse=True)
     needs_review.sort(key=lambda x: x["ring_score"], reverse=True)
 
-    print(f"Flagged: {len(flagged)}, Needs review: {len(needs_review)}, Clean: {len(clean)}")
+    log.info("Flagged: %d, Needs review: %d, Clean: %d", len(flagged), len(needs_review), len(clean))
     return {
         "flagged": flagged,
         "needs_review": needs_review,
@@ -407,12 +427,14 @@ if __name__ == "__main__":
 
     results = detect_rings(data=data, threshold=args.threshold, use_ml=args.use_ml)
 
-    # Build explained output for all three categories
+    # Build explained output for all three categories. The graph is built ONCE
+    # (it was previously rebuilt per ring) and SHAP is skipped for clean rings.
+    G = build_graph(data)
     output = {}
     for category in ["flagged", "needs_review", "clean"]:
         explained = []
         for ring in results[category]:
-            exp = explain_ring(ring, accounts_df, graph=build_graph(data))
+            exp = explain_ring(ring, accounts_df, graph=G, include_shap=(category != "clean"))
             exp["members"] = ring["members"]
             exp["status"] = ring["status"]
             explained.append(exp)

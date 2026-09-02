@@ -25,30 +25,45 @@ try:
 except ImportError:
     HAS_SHAP = False
 
+# Module-level explainer cache. Deserializing the model from disk costs ~150ms;
+# without this cache we paid that once PER RING (the profiled hot path spent
+# ~50% of a detection run re-pickling the same RandomForest).
+_SHAP_EXPLAINER = None
+_SHAP_EXPLAINER_LOADED = False
+
 
 def _get_shap_explainer():
     """
-    Get or create the SHAP TreeExplainer for the ML model.
+    Get (or create once) the SHAP TreeExplainer for the ML model.
     Uses the model's training data as background if available.
     """
+    global _SHAP_EXPLAINER, _SHAP_EXPLAINER_LOADED
+    if _SHAP_EXPLAINER_LOADED:
+        return _SHAP_EXPLAINER
+
     if not HAS_SHAP:
+        _SHAP_EXPLAINER = None
+        _SHAP_EXPLAINER_LOADED = True
         return None
-    
+
     import joblib
     from pathlib import Path
-    
+
     MODEL_DIR = Path(__file__).parent.parent / "detection" / "model"
     MODEL_PATH = MODEL_DIR / "ring_classifier.joblib"
-    
+
     if not MODEL_PATH.exists():
+        _SHAP_EXPLAINER = None
+        _SHAP_EXPLAINER_LOADED = True
         return None
-    
+
     model = joblib.load(MODEL_PATH)
-    
+
     # Create TreeExplainer - for RandomForest/XGBoost
     # Use feature_perturbation='tree_path_dependent' for speed (no background data needed)
-    explainer = shap.TreeExplainer(model, feature_perturbation='tree_path_dependent')
-    return explainer
+    _SHAP_EXPLAINER = shap.TreeExplainer(model, feature_perturbation='tree_path_dependent')
+    _SHAP_EXPLAINER_LOADED = True
+    return _SHAP_EXPLAINER
 
 
 def _compute_shap_values(component: dict, accounts_df: pd.DataFrame, graph) -> dict | None:
@@ -89,9 +104,14 @@ def explain_ring(
     flagged: dict,
     accounts_df: pd.DataFrame,
     graph=None,
+    include_shap: bool = True,
 ) -> dict:
     """
     Generate a plain-language explanation for a flagged ring.
+
+    include_shap=False skips SHAP computation — use it for rings whose
+    explanations are never rendered (e.g. the clean bucket), since SHAP is
+    the most expensive part of explanation.
 
     Returns:
     - summary: one-sentence verdict
@@ -203,7 +223,7 @@ def explain_ring(
 
     # ── SHAP values (ML model explainability) ────────────────────
     shap_values = None
-    if graph is not None and HAS_SHAP:
+    if graph is not None and HAS_SHAP and include_shap:
         # Reconstruct the component dict from the real structural and
         # sub_score data so SHAP sees the same features the model scored.
         density_sub = sub_scores.get("density", 0)
