@@ -86,3 +86,7 @@ export async function submitDecision(ringId, { action, analystId, notes, analyst
 export async function fetchDecisions() {
   return req("/api/feedback/decisions");
 }
+
+export async function fetchHealth() {
+  return req("/api/health");
+}

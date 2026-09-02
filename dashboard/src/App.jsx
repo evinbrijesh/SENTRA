@@ -84,6 +84,8 @@ export default function App() {
           systemOk
           onOpenAlerts={() => setAlertsDrawerOpen(true)}
           unreadAlertsCount={unreadAlertsCount}
+          onSelectRing={(id) => navigate("ring", { ringId: id })}
+          onNavigateAudit={() => navigate("audit")}
         />
         <main className="w-full flex-1 overflow-y-auto pt-16">
           <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 p-container-padding pb-12">
