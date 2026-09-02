@@ -2,7 +2,7 @@
 
 Living status of the Sentra detection system against `docs/ROADMAP.md` and `docs/SENTRA PRD.md`.
 **Current State:** All core priorities, infrastructure, ML models, API endpoints, enterprise capabilities, and UI screens are **fully complete and verified**.  
-**Last Updated:** 2026-08-30  
+**Last Updated:** 2026-09-02  
 
 ---
 
@@ -11,8 +11,8 @@ Living status of the Sentra detection system against `docs/ROADMAP.md` and `docs
 | Milestone | Scope & Topic | Verification State | Key Deliverables & Verified Behavior |
 |---|---|---|---|
 | **Day 1** | Repo Scaffold + Synthetic Generator | ✅ Complete | `data/generator/` outputs labeled CSVs; models realistic organic Wi-Fi / shared family device noise. |
-| **Day 2** | Detection Engine & Feature Extractor | ✅ Complete | 13-dim feature extractor, signup burst decay scoring, NetworkX graph modeling, and SHAP explainability. |
-| **Day 3** | Evaluation & Dual Held-Out Metrics | ✅ Complete | Dual held-out evaluation protocol; honest false-positive cost; RandomForest validation AUC 0.84. |
+| **Day 2** | Detection Engine & Feature Extractor | ✅ Complete | 16-dim feature extractor (incl. referral degree features), signup burst decay scoring, NetworkX graph modeling, and SHAP explainability. |
+| **Day 3** | Evaluation & Dual Held-Out Metrics | ✅ Complete | Group-aware dual held-out evaluation protocol; honest false-positive cost; RandomForest validation AUC 0.801 (group-aware, honest). |
 | **Day 4** | Infrastructure & Idempotent Loader | ✅ Complete | `docker compose up` boots all 4 containers healthy (`/health` reports `postgres: true, neo4j: true`). Loader verified idempotent. |
 | **Day 5** | API Layer & Security/Governance | ✅ Complete | FastAPI endpoints (`/rings`, `/subgraph`, `/alerts`, `/audit`, `/feedback`, `/evaluate`, `/ingest`) live and validated. |
 | **Day 6** | Risk Operations Console | ✅ Complete | React + Tailwind + Cytoscape.js console verified live; self-healing backoff retry, alerting drawer, triage queue. |
@@ -32,17 +32,19 @@ In response to enterprise fintech requirements, the following capabilities were 
 ### 2.2 Regulator-Grade Cryptographic Audit Ledger (`api/audit_ledger.py`)
 - **SHA-256 Merkle Hash Chaining:** Every detection run, model inference, and analyst decision is appended as a cryptographically sealed block (`event_hash = SHA256(prev_hash + canonical_json(event))`).
 - **Integrity Verification (`GET /api/audit/verify`):** Validates hash chain from genesis to head; UI features a live "Verify Ledger Integrity" action and status badge.
-- **Compliance Export:** 1-click JSON download of full regulatory audit trail with model governance metadata (`RandomForest`, `threshold=0.50`, `version=v1.0-dual-eval`) for RBI / FinCEN / SEBI compliance.
+- **Compliance Export:** 1-click JSON download of full regulatory audit trail with model governance metadata (`RandomForest`, `threshold=0.45`, `version=v1.0-dual-eval`) for RBI / FinCEN / SEBI compliance.
 
 ### 2.3 Metric Honesty & Operational Triage Redesign (`DashboardScreen.jsx`)
 - **Context Badges:** Applied explicit `TEST BENCHMARK (HELD-OUT TEST SET)` badges with dashed-border styling to Precision, Recall, and False-Positive cards with explanatory disclaimer.
 - **Urgent Human Review Queue:** Dedicated dashboard triage section for borderline rings ($0.50 - 0.79$) requiring manual review.
 - **Auto-Flagged Rings:** Automated high-confidence fraud ring isolation queue ($\ge 0.80$).
 - **Live Operational KPIs:** Added **Total Financial Exposure (₹ INR GMV)** and **Monitored Entities (500 Accounts)**.
+- **Live Detectable-Cluster Recall (`/evaluate`):** `detectable_cluster_recall` is computed live from the detection run + ground truth — never hardcoded. The explanation strings use the computed numbers.
 
 ### 2.4 Human-In-The-Loop (HITL) Analyst Feedback (`api/routes/feedback.py`)
 - **Ring Detail Decision Actions:** Added **"Confirm Fraud Ring"** and **"Dismiss as False Positive"** action buttons with investigator rationale modal.
 - **Dual Persistence:** Saves decisions to Postgres (`analyst_decisions` table) and local JSON, and immediately seals a signed block into the cryptographic audit ledger.
+- **Read-Time Decision Overlay:** Analyst decisions are overlaid onto detection results at read time (`rings_service._apply_decisions`), not baked into the cached detection — recording a decision no longer triggers a full pipeline re-run.
 
 ### 2.5 Financial Exposure & Probability Precision
 - **Transaction GMV Exposure:** Calculated by aggregating member transactions from `transactions.csv` / Postgres into ring cards (`formatCurrency(estimated_exposure_gmv)`).
@@ -76,13 +78,21 @@ Detection is a **graph-structure** problem. Accounts that share *no* device/IP/r
 | Evaluation Split | Account Precision | Account Recall | Component / Ring Recall | Detectable-Cluster Recall ($\ge 5$) | False Positives |
 |---|---|---|---|---|---|
 | **Easy Test (Held-Out, Seed 137)** | **1.000 (100%)** | **1.000 (100%)** | **1.000 (100%)** | **1.000 (100%)** | **0** |
-| **Hard Stress Test (2,000 Accounts)** | **0.996 (99.6%)** | **0.899 (89.9%)** | **0.444 (44.4%)** | **1.000 (100%)** | **1** |
+| **Hard Stress Test (Frozen 30% slice)** | **1.000 (100%)** | **0.800 (80.0%)** | **0.800 (80.0%)** | **1.000 (100%)** | **0** |
+| **Hard Stress Test (Full 2,000-account eval)** | **0.996 (99.6%)** | **0.939 (93.9%)** | **0.939 (93.9%)** | **1.000 (100%)** | **1** |
 | **Rule-Based Baseline (Static Heuristics)** | 0.052–0.066 | 0.556–1.000 | 0.556–1.000 | 1.000 | 55–71 |
+
+> **Note on the two hard-split numbers:** the frozen 30% slice is the authoritative
+> held-out benchmark reported in `training_report.json` (P=1.0, R=0.80, 0 FP). The full
+> 2,000-account eval (`GET /evaluate?split=hard`) runs detection over the entire hard
+> dataset, including rings not in the frozen slice, so its recall (0.939) is higher and
+> its single FP reflects the larger population. Both report detectable-cluster recall 1.0.
 
 ### Summary of Performance:
 1. **Near-Zero False Positives:** Across both held-out benchmark splits, Sentra produces only 0 to 1 false positive (reducing manual investigation overhead by 98.6% compared to rule-based systems that flag 71 benign users on shared Wi-Fi).
 2. **100% Detectable-Cluster Recall:** Every organized syndicate forming a cluster of $\ge 5$ accounts is completely detected and isolated.
 3. **Honest Singleton Disclosure:** In the hard test set, isolated singletons with zero shared infrastructure are reported transparently as undetectable by graph construction.
+4. **Adversarial Hardening (2026-09):** Added referral degree-distribution features (`max_out_degree`, `referral_depth`, `leaf_fraction`) to catch star/tree referral-farming that evades the density normalization; switched to group-aware CV by ground-truth ring (honest validation AUC 0.801); selected the threshold on detectable clusters only. Hard-test recall improved from 0.444 to 0.80 on the frozen slice. See `docs/design/engineering-review-answers.md`.
 
 ---
 

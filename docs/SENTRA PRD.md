@@ -3,7 +3,7 @@
 **Document Status:** Complete & Production Verified / Buildathon Final  
 **Track:** Razorpay AI Buildathon 2026 — Track 02 (AI Risk Manager: "Abuse-Ring Sentinel")  
 **Target Delivery:** Complete, defense-only fraud-ring detection, visualization, and investigation platform  
-**Last Updated:** 2026-08-30  
+**Last Updated:** 2026-09-02  
 
 ---
 
@@ -15,7 +15,7 @@ Traditional rule engines and transaction-level machine learning models fail agai
 
 Sentra formulates fraud detection as a **relational graph and topology problem**:
 1. **Graph Topological Analysis & Network Modeling:** Extracts connected components across shared hardware devices, IP endpoints, and referral links using NetworkX and Cypher queries.
-2. **Machine Learning Risk Scoring:** Employs a trained RandomForest classifier over 13-dimensional structural and temporal graph features, producing calibrated risk probabilities ($0.0 \dots 1.0$) with operational triage bands (`Auto-Flagged ≥ 0.80`, `Urgent Review 0.50–0.79`, `Clear < 0.50`).
+2. **Machine Learning Risk Scoring:** Employs a trained RandomForest classifier over 16-dimensional structural, temporal, and referral-degree graph features, producing calibrated risk probabilities ($0.0 \dots 1.0$) with operational triage bands (`Auto-Flagged ≥ 0.80`, `Urgent Review 0.50–0.79`, `Clear < 0.50`).
 3. **Additive Model Explainability:** Generates per-ring SHAP value attributions and plain-language investigative audit summaries detailing exact shared device/IP fingerprints and referral loopbacks.
 4. **Financial Exposure Aggregation:** Quantifies live Gross Merchandise Value (GMV in ₹ INR) at risk per ring by aggregating member transaction histories.
 5. **Real-Time Incident Alerting & Enterprise Webhooks:** Features an active TopNav incident counter, slide-over notification drawer, and live webhook dispatch simulation for Slack, PagerDuty, and SIEM feeds.
@@ -108,7 +108,7 @@ Sentra is structured as a decoupled, multi-tier architecture where storage, grap
 ┌────────────────────────────────────────────────────────────────┐
 │               Sentra Detection & Scoring Engine                │
 │  - Graph queries & connected components (NetworkX / Cypher)    │
-│  - 13-Dimensional structural & temporal feature extraction    │
+│  - 16-Dimensional structural, temporal & referral-degree feature extraction │
 │  - Trained RandomForest Classifier (v1.0-dual-eval)           │
 │  - Calibrated probability scoring bands (Critical, Review)     │
 │  - Local & global SHAP attribution + reason string synthesis   │
@@ -146,7 +146,7 @@ Sentra is structured as a decoupled, multi-tier architecture where storage, grap
    - Stores the bipartite and multi-partite relationship graph. Powers Cypher queries for subgraphs, multi-hop shared entity neighborhoods, and circular referral path exploration.
 3. **Core Graph & Feature Extraction Engine (NetworkX & NumPy):**
    - Builds in-memory bipartite projections of account-device and account-IP graphs.
-   - Extracts connected components and computes 13 topological and temporal features per component.
+   - Extracts connected components and computes 16 topological, temporal, and referral-degree features per component.
 4. **Machine Learning Classifier (Scikit-Learn & SHAP):**
    - Evaluates component feature vectors using a trained `RandomForestClassifier`.
    - Produces continuous fraud probability scores ($0.0 \dots 1.0$) and additive SHAP attribution vectors.
@@ -171,7 +171,7 @@ Graph Construction (Undirected Account-Device-IP Graph + Directed Referral Graph
 Connected Component Extraction (Subgraphs of interconnected entities)
        │
        ▼
-Feature Extraction (13-Dimensional Feature Vector per Component)
+Feature Extraction (16-Dimensional Feature Vector per Component)
        │
        ▼
 Trained RandomForest Inference (Outputs continuous probability P(Fraud))
@@ -184,9 +184,9 @@ Score Band Triage & Reason Attribution (SHAP + Heuristic Decomposition + GMV Exp
        └── Score < 0.50 ──► CLEAR / BENIGN TRAFFIC
 ```
 
-### 6.2 The 13-Dimensional Feature Vector (`detection/features.py`)
+### 6.2 The 16-Dimensional Feature Vector (`detection/features.py`)
 
-For every candidate connected component $C = (V_C, E_C)$, the engine computes a 13-dimensional feature representation:
+For every candidate connected component $C = (V_C, E_C)$, the engine computes a 16-dimensional feature representation:
 
 | # | Feature Name | Computation / Source | Description | Suspicious Indicator |
 |---|---|---|---|---|
@@ -203,6 +203,15 @@ For every candidate connected component $C = (V_C, E_C)$, the engine computes a 
 | 11 | `has_referral_cycle` | NetworkX `simple_cycles` | Boolean flag indicating closed loop | True (closed-loop loopback) |
 | 12 | `temporal_score` | Exponential decay formula | Signup burst synchronization | Near 1.0 (burst within minutes) |
 | 13 | `burst_minutes` | $t_{\max} - t_{\min}$ (minutes) | Span of registration time window | Very small duration ($< 60\text{m}$) |
+| 14 | `max_out_degree` | Max out-degree in referral subgraph | Highest referral fan-out among members | High (farming star root) |
+| 15 | `referral_depth` | Longest directed referral path | Depth of the referral tree | Deep tree / farming chain |
+| 16 | `leaf_fraction` | Fraction of members with out-degree 0 | Share of referral leaves | Low (closed loop) or high (star) |
+
+> **Adversarial hardening (features 14–16):** The N(N-1)/2 density normalization hides
+> star/tree referral-farming structures. These degree-distribution features are the
+> non-collapsing structural signal that survives proxy rotation and cycle removal — a
+> farming star has one high-out-degree root and many leaves, whereas organic referral
+> graphs are shallow balanced trees. They are among the top SHAP contributors.
 
 ### 6.3 Temporal Decay Formulation (`detection/temporal.py`)
 
@@ -217,17 +226,18 @@ where $\tau = 360\text{ minutes}$ (6 hours half-life). Accounts registering with
 ### 6.4 Model Training & Dual Evaluation Protocol (`detection/train.py`, `evaluation/evaluate.py`)
 
 - **Model Architectures Evaluated:** Both `RandomForestClassifier` (100–500 trees, `min_samples_split=2`) and `XGBoostClassifier` were tuned and evaluated.
-- **Model Selection Rationale:** On the component dataset, RandomForest achieved a validation **AUC of 0.84**, significantly outperforming XGBoost (**AUC 0.48**), which tended to overfit to dominant features on sparse graph components.
-- **Component-Level Stratified Splitting:** Splitting is performed at the **component level** (never account level), completely eliminating cross-split feature contamination.
+- **Model Selection Rationale:** On the component dataset, RandomForest achieved a validation **AUC of 0.801**, significantly outperforming XGBoost (**AUC 0.48**), which tended to overfit to dominant features on sparse graph components.
+- **Group-Aware Cross-Validation:** Splitting is performed at the **component level, grouped by ground-truth ring** (`StratifiedGroupKFold` / `GroupShuffleSplit`) — components derived from the same ring never straddle a fold or the train/validation split. Row-level CV leaked ring fragments across folds and inflated the validation AUC; the honest group-aware figure is 0.801.
+- **Detectable-Only Threshold Selection:** The decision threshold is selected on **detectable clusters only** (size $\ge 5$). Undetectable singletons — ring members with no shared device/IP/referral — otherwise drag the threshold to ~0 and flag the entire population.
 - **Frozen Dual Held-Out Evaluation Results:**
 
 | Benchmark Split | Scope & Characteristics | Account Precision | Account Recall | Detectable-Cluster Recall ($\ge 5$) | False Positives |
 |---|---|---|---|---|---|
 | **Easy Held-Out Test** | Seed 137, standard coordinated rings + organic noise | **1.000 (100%)** | **1.000 (100%)** | **1.000 (100%)** | **0** |
-| **Hard Stress Test** | Frozen 30% slice, 50% device / 40% IP fragmentation | **1.000 (100%)** | **0.444 (44.4%)** | **1.000 (100%)** | **0** |
+| **Hard Stress Test** | Frozen 30% slice, 50% device / 40% IP fragmentation | **1.000 (100%)** | **0.800 (80.0%)** | **1.000 (100%)** | **0** |
 | **Rule-Based Baseline** | Static heuristic threshold baseline (comparison) | 0.050–0.070 | 1.000 | 1.000 | 55–71 |
 
-> **Analysis of Hard Stress Test Recall:** In the hard stress set, attackers intentionally decouple accounts into isolated singletons (sharing 0 devices/IPs with any co-conspirator). Because Sentra is strictly a **graph-structural detector**, singletons with no edges cannot form graph clusters by definition. However, **every hard ring that formed a detectable cluster ($\ge 5$ accounts) was identified with 100% precision and zero false positives**, proving model robustness.
+> **Analysis of Hard Stress Test Recall:** In the hard stress set, attackers intentionally decouple accounts into isolated singletons (sharing 0 devices/IPs with any co-conspirator). Because Sentra is strictly a **graph-structural detector**, singletons with no edges cannot form graph clusters by definition. However, **every hard ring that formed a detectable cluster ($\ge 5$ accounts) was identified with 100% precision and zero false positives**, proving model robustness. The 0.80 overall recall reflects the remaining undetectable singletons; detectable-cluster recall is 1.0.
 
 ---
 
@@ -253,7 +263,7 @@ To satisfy regulatory scrutiny (RBI digital payment guidelines, FinCEN model ris
   $$\text{Block Hash} = \text{SHA-256}\left( \text{prev\_hash} \,\|\, \text{canonical\_json}(\text{payload}) \right)$$
 - **Immutable Storage:** Dual-persisted to PostgreSQL table `audit_ledger` and append-only local ledger `data/audit/audit_ledger.jsonl`.
 - **Live Chain Verification:** Endpoint `GET /api/audit/verify` re-calculates the complete hash sequence from the Genesis block (`0000000000000000000000000000000000000000000000000000000000000000`) to the current chain head, validating zero data tampering.
-- **Compliance Export:** 1-click JSON export containing full cryptographic proofs, model parameters (`RandomForest`, `threshold=0.50`, `version=v1.0-dual-eval`), and investigator notes.
+- **Compliance Export:** 1-click JSON export containing full cryptographic proofs, model parameters (`RandomForest`, `threshold=0.45`, `version=v1.0-dual-eval`), and investigator notes.
 
 ### 7.4 Human-In-The-Loop (HITL) Analyst Decision Feedback (`api/routes/feedback.py`)
 - **Review Queue Triage:** Borderline rings ($0.50 \le \text{Score} < 0.80$) are surfaced in a dedicated triage queue.
@@ -501,7 +511,7 @@ SENTRA/
 │
 ├── detection/
 │   ├── graph_queries.py       # NetworkX in-memory bipartite graph engine
-│   ├── features.py            # 13-dimensional structural/temporal feature extractor
+│   ├── features.py            # 16-dimensional structural/temporal/referral-degree feature extractor
 │   ├── temporal.py            # Exponential signup time burst analysis
 │   ├── train.py               # Model training script (RandomForest vs XGBoost)
 │   ├── scoring.py             # Inference pipeline & calibrated probability scoring

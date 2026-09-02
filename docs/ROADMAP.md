@@ -22,14 +22,14 @@
 ---
 
 ## Day 2 — Core Detection Engine & Feature Extraction
-**Milestone Goal:** Offline graph construction, 13-dim feature extraction, temporal decay scoring, and SHAP explainability.
+**Milestone Goal:** Offline graph construction, 16-dim feature extraction, temporal decay scoring, and SHAP explainability.
 
 - [x] Implement `detection/graph_queries.py` (NetworkX undirected entity graph + directed referral graph):
   - Connected component segmentation across shared devices, IPs, and referrals.
   - Cycle detection using NetworkX `simple_cycles`.
   - Component density and size computation.
 - [x] Implement `detection/temporal.py` (exponential decay signup burst modeling with 6h half-life and dominant cluster scoring).
-- [x] Implement `detection/features.py` (13-dimensional structural, relational, and temporal feature vector).
+- [x] Implement `detection/features.py` (16-dimensional structural, relational, temporal, and referral-degree feature vector — incl. `max_out_degree`, `referral_depth`, `leaf_fraction` for star/tree farming detection).
 - [x] Implement `detection/scoring.py` (calibrated probability prediction and three-tier triage classification).
 - [x] Implement `detection/explain.py` (SHAP TreeExplainer integration and plain-language reason string synthesis).
 
@@ -38,12 +38,12 @@
 ## Day 3 — Model Training & Dual Held-Out Evaluation
 **Milestone Goal:** Train ML classifier, benchmark against rule baseline, and freeze honest held-out metrics.
 
-- [x] Implement `evaluation/split.py` (stratified component-level splitting into dev and held-out test).
-- [x] Implement `detection/train.py` (train RandomForest and XGBoost, evaluate on validation AUC, serialize winning model).
+- [x] Implement `evaluation/split.py` (group-aware component-level splitting into dev and held-out test).
+- [x] Implement `detection/train.py` (train RandomForest and XGBoost, evaluate on validation AUC, serialize winning model). CV is group-aware by ground-truth ring (`StratifiedGroupKFold` / `GroupShuffleSplit`); threshold selected on detectable clusters only (size ≥ 5).
 - [x] Implement `evaluation/evaluate.py` (compute ring-level and account-level Precision, Recall, F1, and False-Positive cost).
 - [x] Freeze authoritative held-out metrics:
   - **Easy Held-Out Test (Seed 137):** Precision 1.000, Recall 1.000, FP = 0.
-  - **Hard Stress Test (Frozen 30% slice):** Precision 1.000, Recall 0.444 (Detectable-Cluster Recall 1.000), FP = 0.
+  - **Hard Stress Test (Frozen 30% slice):** Precision 1.000, Recall 0.800 (Detectable-Cluster Recall 1.000), FP = 0.
   - **Rule-Based Baseline Comparison:** Precision 0.050–0.070, FP = 55–71.
 
 ---
@@ -53,8 +53,8 @@
 
 - [x] Implement `docker-compose.yml` orchestrating `postgres`, `neo4j`, `api`, and `web`.
 - [x] Implement `loader/load.py`:
-  - PostgreSQL ingestion: `accounts`, `devices`, `ips`, `transactions`, `referrals` via `ON CONFLICT DO NOTHING`.
-  - Neo4j ingestion: `(:Account)`, `(:Device)`, `(:IP)` nodes and `[:USES_DEVICE]`, `[:USES_IP]`, `[:REFERRED]` relationships via Cypher `MERGE`.
+  - PostgreSQL ingestion: `accounts`, `devices`, `ips`, `transactions`, `referrals` via `ON CONFLICT DO NOTHING` (chunked multi-row inserts).
+  - Neo4j ingestion: `(:Account)`, `(:Device)`, `(:IP)` nodes and `[:USES_DEVICE]`, `[:USES_IP]`, `[:REFERRED]` relationships via Cypher `MERGE` (batched `UNWIND`).
   - Fixed Neo4j Cartesian product optimization and PostgreSQL rowcount tracking.
 - [x] Implement `api/db.py` (connection pooling with automatic exception rollback preventing pool poisoning).
 - [x] Implement `tests/test_loader.py` (verified idempotency on repeated executions).
