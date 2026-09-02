@@ -59,7 +59,9 @@ class _FakeCursor:
         self.rowcount = 0
 
     def _do_insert(self, sql, params):
-        # INSERT INTO <t> (c1, c2, ...) VALUES (%s, %s, ...) ON CONFLICT (pk) DO NOTHING
+        # Handles both single-row and chunked multi-row inserts:
+        #   INSERT INTO t (c1, c2) VALUES (%s, %s) ON CONFLICT (pk) DO NOTHING
+        #   INSERT INTO t (c1, c2) VALUES (%s, %s),(%s, %s), ... ON CONFLICT ...
         import re
 
         table = re.search(r"INSERT INTO (\w+)", sql).group(1)
@@ -74,13 +76,25 @@ class _FakeCursor:
         tbl = self._conn.tables.setdefault(table, _FakeTable())
         tbl.pk_cols = pk_cols
 
-        row = dict(zip(cols, params))
-        pk = tuple(row[c] for c in pk_cols)
-        if pk in tbl.rows:
-            self.rowcount = 0  # ON CONFLICT DO NOTHING
+        params = list(params)
+        # Multi-row VALUES: total %s placeholders / columns-per-row = row count.
+        n_rows = max(sql.count("%s") // len(cols), 1)
+        if n_rows > 1 and len(params) == n_rows * len(cols):
+            row_dicts = [
+                dict(zip(cols, params[i * len(cols):(i + 1) * len(cols)]))
+                for i in range(n_rows)
+            ]
         else:
+            row_dicts = [dict(zip(cols, params))]
+
+        inserted = 0
+        for row in row_dicts:
+            pk = tuple(row[c] for c in pk_cols)
+            if pk in tbl.rows:
+                continue  # ON CONFLICT DO NOTHING
             tbl.rows[pk] = row
-            self.rowcount = 1
+            inserted += 1
+        self.rowcount = inserted
 
     def close(self):
         pass
@@ -103,32 +117,36 @@ class FakePostgresConn:
 
 # ── Fake Neo4j (driver/session surface used by the loader) ──────────────────
 class FakeNeo4jSession:
-    """Records the set of unique relationships created via MERGE."""
+    """Records the set of unique relationships created via MERGE.
+
+    Supports both the legacy single-row param style and the batched
+    UNWIND $rows style the loader now uses.
+    """
 
     def __init__(self, driver):
         self._driver = driver
 
     def run(self, cypher, **params):
         c = cypher.upper()
+        if "UNWIND" in c:
+            batch = params.get("batch")
+            for row in params.get("rows", []):
+                self._apply(c, row, batch)
+        else:
+            self._apply(c, params, params.get("batch"))
+        return None
+
+    def _apply(self, c, p, batch):
         # Only relationship-bearing statements create edges we care about.
         if "USES_DEVICE" in c:
-            self._driver.edges.add(
-                ("USES_DEVICE", params["aid"], params["did"], params["batch"])
-            )
+            self._driver.edges.add(("USES_DEVICE", p["aid"], p["did"], batch))
         elif "CONNECTS_VIA_IP" in c:
-            self._driver.edges.add(
-                ("CONNECTS_VIA_IP", params["aid"], params["ip"], params["batch"])
-            )
+            self._driver.edges.add(("CONNECTS_VIA_IP", p["aid"], p["ip"], batch))
         elif "REFERRED" in c and "MERGE (A1)-[R:REFERRED" in c:
-            self._driver.edges.add(
-                ("REFERRED", params["ref"], params["refd"], params["batch"])
-            )
+            self._driver.edges.add(("REFERRED", p["ref"], p["refd"], batch))
         elif "HAS_PAYMENT_METHOD" in c:
-            self._driver.edges.add(
-                ("HAS_PAYMENT_METHOD", params["aid"], params["pmid"], params["batch"])
-            )
+            self._driver.edges.add(("HAS_PAYMENT_METHOD", p["aid"], p["pmid"], batch))
         # Account node MERGEs and SETs are naturally idempotent — ignore.
-        return None
 
     def __enter__(self):
         return self

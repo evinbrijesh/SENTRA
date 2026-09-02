@@ -73,6 +73,42 @@ def load_csvs(data_dir: str) -> dict[str, pd.DataFrame]:
     }
 
 
+# ── Bulk-write helpers ─────────────────────────────────────────────────────
+# Per-row cursor.execute / session.run costs one network round-trip per row —
+# the dominant scaling wall in batch ingestion. Chunked multi-row writes keep
+# identical idempotency semantics (ON CONFLICT DO NOTHING / MERGE) at 10-100x
+# the throughput.
+WRITE_CHUNK = 500
+
+
+def _chunks(lst: list, size: int):
+    for i in range(0, len(lst), size):
+        yield lst[i:i + size]
+
+
+def _insert_many(cur, table: str, cols: list[str], rows: list[tuple],
+                 conflict_cols: list[str], page_size: int = WRITE_CHUNK) -> int:
+    """
+    Chunked multi-row INSERT ... ON CONFLICT DO NOTHING. Returns the total
+    number of rows actually inserted (accurate across pages, unlike a single
+    execute_values call whose rowcount reflects only the last page).
+    """
+    if not rows:
+        return 0
+    template = "(" + ",".join(["%s"] * len(cols)) + ")"
+    total = 0
+    for chunk in _chunks(rows, page_size):
+        values = ",".join([template] * len(chunk))
+        sql = (
+            f"INSERT INTO {table} ({', '.join(cols)}) VALUES {values} "
+            f"ON CONFLICT ({', '.join(conflict_cols)}) DO NOTHING"
+        )
+        flat = [v for row in chunk for v in row]
+        cur.execute(sql, flat)
+        total += cur.rowcount
+    return total
+
+
 # ── Postgres load ──────────────────────────────────────────────────────────
 POSTGRES_SCHEMA = """
 CREATE TABLE IF NOT EXISTS accounts (
@@ -100,37 +136,42 @@ ALTER TABLE payment_methods ADD COLUMN IF NOT EXISTS batch TEXT;
 
 
 def load_to_postgres(conn, data: dict[str, pd.DataFrame], batch: str = "default") -> dict:
-    """Insert CSVs into Postgres. Idempotent via ON CONFLICT DO NOTHING."""
+    """Insert CSVs into Postgres. Idempotent via ON CONFLICT DO NOTHING.
+    Uses chunked multi-row inserts (one round-trip per chunk, not per row)."""
     counts = {"accounts": 0, "transactions": 0, "payment_methods": 0}
     cur = conn.cursor()
 
     cur.execute(POSTGRES_SCHEMA)
 
-    accounts = data["accounts"]
-    for _, row in accounts.iterrows():
-        cur.execute(
-            "INSERT INTO accounts (account_id, signup_time, kyc_status, batch) "
-            "VALUES (%s, %s, %s, %s) ON CONFLICT (account_id) DO NOTHING",
-            (row["account_id"], row.get("signup_time"), row.get("kyc_status"), batch),
-        )
-        counts["accounts"] += cur.rowcount  # 1 if inserted, 0 if skipped
+    counts["accounts"] = _insert_many(
+        cur, "accounts",
+        ["account_id", "signup_time", "kyc_status", "batch"],
+        [
+            (r["account_id"], r.get("signup_time"), r.get("kyc_status"), batch)
+            for r in data["accounts"].to_dict("records")
+        ],
+        ["account_id"],
+    )
 
-    for _, row in data["transactions"].iterrows():
-        cur.execute(
-            "INSERT INTO transactions (transaction_id, account_id, amount, timestamp, batch) "
-            "VALUES (%s, %s, %s, %s, %s) ON CONFLICT (transaction_id) DO NOTHING",
-            (row["transaction_id"], row["account_id"], row.get("amount"), row.get("timestamp"), batch),
-        )
-        counts["transactions"] += cur.rowcount
+    counts["transactions"] = _insert_many(
+        cur, "transactions",
+        ["transaction_id", "account_id", "amount", "timestamp", "batch"],
+        [
+            (r["transaction_id"], r["account_id"], r.get("amount"), r.get("timestamp"), batch)
+            for r in data["transactions"].to_dict("records")
+        ],
+        ["transaction_id"],
+    )
 
-    for _, row in data["payment_methods"].iterrows():
-        cur.execute(
-            "INSERT INTO payment_methods (account_id, payment_method_type, payment_method_id, batch) "
-            "VALUES (%s, %s, %s, %s) "
-            "ON CONFLICT (account_id, payment_method_id) DO NOTHING",
-            (row["account_id"], row.get("payment_method_type"), row.get("payment_method_id"), batch),
-        )
-        counts["payment_methods"] += cur.rowcount
+    counts["payment_methods"] = _insert_many(
+        cur, "payment_methods",
+        ["account_id", "payment_method_type", "payment_method_id", "batch"],
+        [
+            (r["account_id"], r.get("payment_method_type"), r.get("payment_method_id"), batch)
+            for r in data["payment_methods"].to_dict("records")
+        ],
+        ["account_id", "payment_method_id"],
+    )
 
     conn.commit()
     return counts
@@ -140,7 +181,8 @@ def load_to_postgres(conn, data: dict[str, pd.DataFrame], batch: str = "default"
 def load_to_neo4j(driver, data: dict[str, pd.DataFrame], batch: str = "default") -> dict:
     """
     Write relationship layer to Neo4j. All Cypher uses MERGE so re-runs add
-    no duplicate relationships (fully idempotent). Returns per-label counts.
+    no duplicate relationships (fully idempotent). Writes are batched with
+    UNWIND — one round-trip per chunk instead of per row. Returns per-label counts.
     """
     counts = {
         "accounts": 0,
@@ -152,66 +194,97 @@ def load_to_neo4j(driver, data: dict[str, pd.DataFrame], batch: str = "default")
 
     with driver.session() as session:
         # Accounts (idempotent merge on node)
-        for _, row in data["accounts"].iterrows():
+        acct_rows = [
+            {
+                "aid": r["account_id"],
+                "st": str(r.get("signup_time")),
+                "kyc": r.get("kyc_status"),
+            }
+            for r in data["accounts"].to_dict("records")
+        ]
+        for chunk in _chunks(acct_rows, WRITE_CHUNK):
             session.run(
-                "MERGE (a:Account {account_id: $aid}) "
-                "SET a.signup_time = $st, a.kyc_status = $kyc, a.batch = $batch",
-                aid=row["account_id"], st=str(row.get("signup_time")),
-                kyc=row.get("kyc_status"), batch=batch,
+                "UNWIND $rows AS row "
+                "MERGE (a:Account {account_id: row.aid}) "
+                "SET a.signup_time = row.st, a.kyc_status = row.kyc, a.batch = $batch",
+                rows=chunk, batch=batch,
             )
-            counts["accounts"] += 1
+        counts["accounts"] = len(acct_rows)
 
         # Account -> Device edges
-        for _, row in data["devices"].iterrows():
-            device_id = row["device_id"]
-            for aid in _parse_account_ids(row["account_ids"]):
-                session.run(
-                    "MATCH (a:Account {account_id: $aid}) "
-                    "MERGE (d:Device {device_id: $did}) "
-                    "MERGE (a)-[:USES_DEVICE {batch: $batch}]->(d)",
-                    aid=aid, did=device_id, batch=batch,
-                )
-                counts["device_edges"] += 1
+        dev_rows = [
+            {"aid": aid, "did": r["device_id"]}
+            for r in data["devices"].to_dict("records")
+            for aid in _parse_account_ids(r["account_ids"])
+        ]
+        for chunk in _chunks(dev_rows, WRITE_CHUNK):
+            session.run(
+                "UNWIND $rows AS row "
+                "MATCH (a:Account {account_id: row.aid}) "
+                "MERGE (d:Device {device_id: row.did}) "
+                "MERGE (a)-[:USES_DEVICE {batch: $batch}]->(d)",
+                rows=chunk, batch=batch,
+            )
+        counts["device_edges"] = len(dev_rows)
 
         # Account -> IP edges
-        for _, row in data["ips"].iterrows():
-            ip = row["ip_address"]
-            for aid in _parse_account_ids(row["account_ids"]):
-                session.run(
-                    "MATCH (a:Account {account_id: $aid}) "
-                    "MERGE (i:IP {ip_address: $ip}) "
-                    "MERGE (a)-[:CONNECTS_VIA_IP {batch: $batch}]->(i)",
-                    aid=aid, ip=ip, batch=batch,
-                )
-                counts["ip_edges"] += 1
+        ip_rows = [
+            {"aid": aid, "ip": r["ip_address"]}
+            for r in data["ips"].to_dict("records")
+            for aid in _parse_account_ids(r["account_ids"])
+        ]
+        for chunk in _chunks(ip_rows, WRITE_CHUNK):
+            session.run(
+                "UNWIND $rows AS row "
+                "MATCH (a:Account {account_id: row.aid}) "
+                "MERGE (i:IP {ip_address: row.ip}) "
+                "MERGE (a)-[:CONNECTS_VIA_IP {batch: $batch}]->(i)",
+                rows=chunk, batch=batch,
+            )
+        counts["ip_edges"] = len(ip_rows)
 
         # Referral edges (direction-preserving, ring metadata preserved).
         # NOTE: `ring_id` is null for normal referrals. A MERGE *pattern* cannot
         # contain a null property key in Neo4j, so we MERGE only on the batch
         # (never null) and SET the nullable fields afterward.
-        for _, row in data["referrals"].iterrows():
-            is_ring = bool(row.get("is_ring_referral"))
-            ring_id = row.get("ring_id")
+        ref_rows = [
+            {
+                "ref": r["referrer_id"],
+                "refd": r["referred_id"],
+                "ring": bool(r.get("is_ring_referral")),
+                "rid": r.get("ring_id") if bool(r.get("is_ring_referral")) else None,
+            }
+            for r in data["referrals"].to_dict("records")
+        ]
+        for chunk in _chunks(ref_rows, WRITE_CHUNK):
             session.run(
-                "MATCH (a1:Account {account_id: $ref}) "
-                "MATCH (a2:Account {account_id: $refd}) "
+                "UNWIND $rows AS row "
+                "MATCH (a1:Account {account_id: row.ref}) "
+                "MATCH (a2:Account {account_id: row.refd}) "
                 "MERGE (a1)-[r:REFERRED {batch: $batch}]->(a2) "
-                "SET r.is_ring_referral = $ring, r.ring_id = $rid",
-                ref=row["referrer_id"], refd=row["referred_id"],
-                ring=is_ring, rid=ring_id if is_ring else None, batch=batch,
+                "SET r.is_ring_referral = row.ring, r.ring_id = row.rid",
+                rows=chunk, batch=batch,
             )
-            counts["referral_edges"] += 1
+        counts["referral_edges"] = len(ref_rows)
 
         # Payment methods as nodes connected to accounts
-        for _, row in data["payment_methods"].iterrows():
+        pm_rows = [
+            {
+                "aid": r["account_id"],
+                "pmid": r["payment_method_id"],
+                "pmtype": r.get("payment_method_type"),
+            }
+            for r in data["payment_methods"].to_dict("records")
+        ]
+        for chunk in _chunks(pm_rows, WRITE_CHUNK):
             session.run(
-                "MATCH (a:Account {account_id: $aid}) "
-                "MERGE (pm:PaymentMethod {id: $pmid, type: $pmtype}) "
+                "UNWIND $rows AS row "
+                "MATCH (a:Account {account_id: row.aid}) "
+                "MERGE (pm:PaymentMethod {id: row.pmid, type: row.pmtype}) "
                 "MERGE (a)-[:HAS_PAYMENT_METHOD {batch: $batch}]->(pm)",
-                aid=row["account_id"],
-                pmid=row["payment_method_id"], pmtype=row.get("payment_method_type"), batch=batch,
+                rows=chunk, batch=batch,
             )
-            counts["payments"] += 1
+        counts["payments"] = len(pm_rows)
 
     return counts
 
