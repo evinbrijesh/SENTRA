@@ -1,5 +1,5 @@
 {
-  "threshold": 0.5,
-  "recall_oriented_threshold": 0.5,
+  "threshold": 0.45,
+  "recall_oriented_threshold": 0.45,
   "model": "RandomForest"
 }

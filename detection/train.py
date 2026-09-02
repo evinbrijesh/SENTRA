@@ -17,6 +17,10 @@ Honesty-first design (per PRD grading bar):
 - The decision threshold is selected on a validation slice carved out of
   the training pool (never on the held-out tests), targeting an operating
   point that balances recall (missed rings are costly) against FP cost.
+- Cross-validation is GROUP-AWARE: components derived from the same
+  ground-truth ring are kept in the same fold (StratifiedGroupKFold), and
+  the train/validation split never straddles a ring. Row-level CV would
+  leak near-duplicate subgraphs across folds and inflate the validation AUC.
 
 Usage:
     python -m detection.train
@@ -42,7 +46,11 @@ from sklearn.metrics import (
     f1_score,
     confusion_matrix,
 )
-from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
+from sklearn.model_selection import (
+    GridSearchCV,
+    GroupShuffleSplit,
+    StratifiedGroupKFold,
+)
 
 try:
     from xgboost import XGBClassifier
@@ -84,25 +92,60 @@ def load_ground_truth(labels_dir: str, split: str = "dev") -> set[str]:
     return ring_members
 
 
+def load_ground_truth_rings(labels_dir: str, split: str = "dev") -> list[set[str]]:
+    """Load ground truth; return one set of member account ids per ring."""
+    path = os.path.join(labels_dir, f"ground_truth_{split}.json")
+    with open(path) as f:
+        gt = json.load(f)
+    return [set(ring["member_account_ids"]) for ring in gt.get("rings", [])]
+
+
 def label_components(components, ring_members):
     """Component label = 1 if ANY member is a known ring account."""
     return [1 if any(m in ring_members for m in c["members"]) else 0 for c in components]
 
 
+def build_groups(components, gt_rings: list[set[str]]) -> np.ndarray:
+    """
+    Group-aware CV groups: components derived from the SAME ground-truth ring
+    are not independent samples — a hard ring can fragment into multiple
+    connected components, and row-level CV would leak near-duplicates across
+    folds. Group by ring for positive components; each clean component is its
+    own group.
+
+    Returns an array of group IDs aligned with the components list.
+    """
+    groups = []
+    for comp in components:
+        members = set(comp["members"])
+        hit_rings = [
+            f"ring:{i}" for i, r in enumerate(gt_rings) if members & r
+        ]
+        if hit_rings:
+            groups.append(",".join(sorted(hit_rings)))
+        else:
+            groups.append(f"comp:{comp['component_id']}")
+    return np.array(groups, dtype=object)
+
+
 def get_labeled_data(data_dir: str, gt_split: str):
-    """Return (X, y, components, temporal) for a CSV dir + ground-truth split."""
+    """Return (X, y, components, temporal, groups) for a CSV dir + ground-truth split."""
     X, cids, temporal, components, accounts_df = extract_features_from_csvs(data_dir)
-    members = load_ground_truth(LABELS_DIR, split=gt_split)
+    gt_rings = load_ground_truth_rings(LABELS_DIR, split=gt_split)
+    members = set().union(*gt_rings) if gt_rings else set()
     y = np.array(label_components(components, members), dtype=int)
-    return X, y, components, temporal
+    groups = build_groups(components, gt_rings)
+    return X, y, components, temporal, groups
 
 
-def stratified_split(X, y, test_size, seed):
-    """Stratified train/test split returning indices-aligned arrays."""
-    idx = np.arange(len(y))
-    tr, te = train_test_split(
-        idx, test_size=test_size, stratify=y, random_state=seed
-    )
+def group_split(X, y, groups, test_size, seed):
+    """
+    Group-aware train/validation split. All components from the same
+    ground-truth ring stay on one side — no cross-fold leakage of
+    near-duplicate subgraphs.
+    """
+    gss = GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=seed)
+    tr, te = next(gss.split(X, y, groups))
     return (X[tr], X[te], y[tr], y[te], tr, te)
 
 
@@ -117,9 +160,29 @@ def best_f1_threshold(y_true, proba):
     return best[0]
 
 
-def recall_oriented_threshold(y_true, proba, target_recall=0.9):
-    """Lowest threshold that still achieves target_recall (favor recall)."""
+def recall_oriented_threshold(y_true, proba, target_recall=0.9, sizes=None, detectable_min=5):
+    """
+    Highest threshold that still achieves target_recall (favor recall, but
+    maximize precision subject to the recall floor).
+
+    When `sizes` is provided, recall is computed over DETECTABLE positives only
+    (components of size >= detectable_min). Singletons — ring members that share
+    no device/IP/referral with any co-conspirator — are inherently undetectable
+    by a graph-structure detector (see detectable_cluster_recall in metrics_for).
+    Counting them against the recall floor drags the threshold to ~0 and flags
+    the entire population, which is the dominant FP-cost failure mode.
+    """
     chosen = 0.5
+    if sizes is not None:
+        det_mask = np.array([s >= detectable_min for s in sizes])
+        y_det = y_true[det_mask]
+        if y_det.sum() == 0:
+            return chosen
+        for t in np.arange(0.01, 0.99, 0.01):
+            pred_det = (proba[det_mask] >= t).astype(int)
+            if recall_score(y_det, pred_det, zero_division=0) >= target_recall:
+                chosen = round(float(t), 2)
+        return chosen
     for t in np.arange(0.01, 0.99, 0.01):
         pred = (proba >= t).astype(int)
         if recall_score(y_true, pred, zero_division=0) >= target_recall:
@@ -156,7 +219,18 @@ def metrics_for(y_true, proba, threshold, sizes=None, detectable_min=5):
     return out
 
 
-def train_random_forest(X_fit, y_fit, X_val, y_val):
+def _group_cv_n_splits(y_fit, groups_fit, max_splits: int = 5) -> int:
+    """
+    Number of folds for StratifiedGroupKFold, bounded by the number of groups
+    per class. StratifiedGroupKFold requires each class to have at least
+    n_splits groups; with only a handful of rings, cap folds accordingly.
+    """
+    pos_groups = len(set(groups_fit[y_fit == 1]))
+    neg_groups = len(set(groups_fit[y_fit == 0]))
+    return max(2, min(max_splits, pos_groups, neg_groups))
+
+
+def train_random_forest(X_fit, y_fit, X_val, y_val, groups_fit):
     logger.info("Training RandomForest...")
     param_grid = {
         "n_estimators": [100, 200, 500],
@@ -164,20 +238,20 @@ def train_random_forest(X_fit, y_fit, X_val, y_val):
         "min_samples_split": [2, 5, 10],
         "random_state": [42],
     }
-    cv = StratifiedKFold(
-        n_splits=min(5, min(np.bincount(y_fit)) if min(np.bincount(y_fit)) > 1 else 2),
+    cv = StratifiedGroupKFold(
+        n_splits=_group_cv_n_splits(y_fit, groups_fit),
         shuffle=True, random_state=42,
     )
     grid = GridSearchCV(
         RandomForestClassifier(), param_grid, cv=cv, scoring="roc_auc", n_jobs=-1
     )
-    grid.fit(X_fit, y_fit)
+    grid.fit(X_fit, y_fit, groups=groups_fit)
     model = grid.best_estimator_
     proba = model.predict_proba(X_val)[:, 1]
     return model, grid.best_params_, grid.best_score_, proba
 
 
-def train_xgboost(X_fit, y_fit, X_val, y_val):
+def train_xgboost(X_fit, y_fit, X_val, y_val, groups_fit):
     if not HAS_XGBOOST:
         logger.warning("XGBoost not installed, skipping")
         return None, None, 0.0, None
@@ -192,15 +266,15 @@ def train_xgboost(X_fit, y_fit, X_val, y_val):
         "scale_pos_weight": [scale],
         "random_state": [42],
     }
-    cv = StratifiedKFold(
-        n_splits=min(5, min(np.bincount(y_fit)) if min(np.bincount(y_fit)) > 1 else 2),
+    cv = StratifiedGroupKFold(
+        n_splits=_group_cv_n_splits(y_fit, groups_fit),
         shuffle=True, random_state=42,
     )
     grid = GridSearchCV(
         XGBClassifier(eval_metric="logloss", use_label_encoder=False),
         param_grid, cv=cv, scoring="roc_auc", n_jobs=-1,
     )
-    grid.fit(X_fit, y_fit)
+    grid.fit(X_fit, y_fit, groups=groups_fit)
     model = grid.best_estimator_
     proba = model.predict_proba(X_val)[:, 1]
     return model, grid.best_params_, grid.best_score_, proba
@@ -215,32 +289,41 @@ def main():
 
     # 1. Load easy (training) + easy test (held out) + hard full
     logger.info("Loading easy training data (%s)...", EASY_DATA_DIR)
-    X_easy, y_easy, comps_easy, temp_easy = get_labeled_data(EASY_DATA_DIR, "dev")
+    X_easy, y_easy, comps_easy, temp_easy, groups_easy = get_labeled_data(EASY_DATA_DIR, "dev")
     logger.info("Loading easy held-out test (%s)...", EASY_TEST_DIR)
-    X_easy_te, y_easy_te, comps_easy_te, temp_easy_te = get_labeled_data(EASY_TEST_DIR, "test")
+    X_easy_te, y_easy_te, comps_easy_te, temp_easy_te, _ = get_labeled_data(EASY_TEST_DIR, "test")
     logger.info("Loading hard data (%s)...", HARD_DATA_DIR)
-    X_hard, y_hard, comps_hard, temp_hard = get_labeled_data(HARD_DATA_DIR, "hard")
+    X_hard, y_hard, comps_hard, temp_hard, groups_hard = get_labeled_data(HARD_DATA_DIR, "hard")
 
-    # 2. Frozen stratified hard test split
-    X_hard_tr, X_hard_te, y_hard_tr, y_hard_te, hard_tr_idx, hard_te_idx = stratified_split(
-        X_hard, y_hard, test_size=args.hard_test_size, seed=HARD_TEST_SEED
+    # 2. Frozen group-aware hard test split (rings never straddle the split)
+    X_hard_tr, X_hard_te, y_hard_tr, y_hard_te, hard_tr_idx, hard_te_idx = group_split(
+        X_hard, y_hard, groups_hard, test_size=args.hard_test_size, seed=HARD_TEST_SEED
     )
+    groups_hard_tr = groups_hard[hard_tr_idx]
     logger.info("Hard split: %d train / %d held-out-test (rings: %d / %d)",
                 len(y_hard_tr), len(y_hard_te), int(y_hard_tr.sum()), int(y_hard_te.sum()))
 
     # 3. Combined training pool = easy + hard_train
     X_pool = np.vstack([X_easy, X_hard_tr])
     y_pool = np.concatenate([y_easy, y_hard_tr])
+    groups_pool = np.concatenate([groups_easy, groups_hard_tr])
     logger.info("Training pool: %d components (%d rings)", len(y_pool), int(y_pool.sum()))
 
     # 4. Internal validation slice for threshold + model selection (honest, not the tests)
-    X_fit, X_val, y_fit, y_val, _, _ = stratified_split(
-        X_pool, y_pool, test_size=0.2, seed=VAL_SEED
+    X_fit, X_val, y_fit, y_val, fit_idx, val_idx = group_split(
+        X_pool, y_pool, groups_pool, test_size=0.2, seed=VAL_SEED
     )
+    groups_fit = groups_pool[fit_idx]
+    # Component sizes for the validation slice — used to select the threshold on
+    # DETECTABLE clusters only (singletons are inherently undetectable).
+    sizes_pool = np.array(
+        [c["size"] for c in comps_easy] + [comps_hard[i]["size"] for i in hard_tr_idx]
+    )
+    sizes_val = sizes_pool[val_idx]
 
     # 5. Train candidates
-    rf_model, rf_params, rf_cv, rf_val_proba = train_random_forest(X_fit, y_fit, X_val, y_val)
-    xgb_model, xgb_params, xgb_cv, xgb_val_proba = train_xgboost(X_fit, y_fit, X_val, y_val)
+    rf_model, rf_params, rf_cv, rf_val_proba = train_random_forest(X_fit, y_fit, X_val, y_val, groups_fit)
+    xgb_model, xgb_params, xgb_cv, xgb_val_proba = train_xgboost(X_fit, y_fit, X_val, y_val, groups_fit)
 
     candidates = {"RandomForest": (rf_model, rf_cv, rf_val_proba, rf_params)}
     if xgb_model is not None:
@@ -253,8 +336,12 @@ def main():
     # 6. Threshold selection on validation slice.
     # Primary operating point is recall-oriented: missing a coordinated ring is
     # costly, and we have near-zero false positives, so we favor catching rings.
+    # Recall is measured over DETECTABLE clusters (size >= 5) only — undetectable
+    # singletons must not drag the threshold to ~0 (see recall_oriented_threshold).
     f1_threshold = best_f1_threshold(y_val, winner_val_proba)
-    recall_threshold = recall_oriented_threshold(y_val, winner_val_proba, target_recall=0.9)
+    recall_threshold = recall_oriented_threshold(
+        y_val, winner_val_proba, target_recall=0.9, sizes=sizes_val
+    )
     threshold = recall_threshold
     logger.info("Thresholds — max-F1: %.2f | recall-oriented (primary): %.2f",
                 f1_threshold, recall_threshold)
