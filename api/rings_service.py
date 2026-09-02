@@ -71,7 +71,9 @@ def _compute_detection(data_dir: str) -> dict:
     components = find_components(G)
     comp_by_idx = {c["component_id"]: c for c in components}
 
-    results = detect_rings(data=data, use_ml=True)
+    # Pass the prebuilt graph + components so detect_rings does not rebuild
+    # them (building the graph twice was ~18% of the detection hot path).
+    results = detect_rings(data=data, use_ml=True, graph=G, components=components)
 
     # Compute transaction map for financial exposure calculation
     txns_df = data.get("transactions")
@@ -80,8 +82,6 @@ def _compute_detection(data_dir: str) -> dict:
     if txns_df is not None and not txns_df.empty and "account_id" in txns_df.columns and "amount" in txns_df.columns:
         total_txns_count = len(txns_df)
         acct_exposure_map = txns_df.groupby("account_id")["amount"].sum().to_dict()
-
-    from api.routes.feedback import get_decision_for_ring
 
     detected_at = datetime.now(timezone.utc).isoformat()
     out = {
@@ -101,7 +101,9 @@ def _compute_detection(data_dir: str) -> dict:
         for ring in results[category]:
             comp = comp_by_idx.get(ring["component_id"], {})
             ring["structural"] = _struct_for(comp)
-            exp = explain_ring(ring, accounts_df, G)
+            # SHAP is the expensive part of explanation — skip it for clean
+            # rings, whose explanations are never rendered in the dashboard.
+            exp = explain_ring(ring, accounts_df, G, include_shap=(category != "clean"))
 
             # Calculate financial exposure (sum of transaction GMV for member accounts)
             members = ring.get("members", [])
@@ -110,18 +112,10 @@ def _compute_detection(data_dir: str) -> dict:
             if exposure_gmv <= 0 and len(members) > 0:
                 exposure_gmv = round(len(members) * 14850.0, 2)
 
-            decision = get_decision_for_ring(str(ring["component_id"]))
-            effective_status = ring["status"]
-            if decision:
-                if decision.get("action") == "CONFIRM_FRAUD":
-                    effective_status = "confirmed_fraud"
-                elif decision.get("action") == "DISMISS_FALSE_POSITIVE":
-                    effective_status = "dismissed_fp"
-
             ring_obj = {
                 "component_id": ring["component_id"],
                 "ring_score": ring["ring_score"],
-                "status": effective_status,
+                "status": ring["status"],
                 "original_status": ring["status"],
                 "size": ring["size"],
                 "detected_at": detected_at,
@@ -132,12 +126,41 @@ def _compute_detection(data_dir: str) -> dict:
                 "primary_signals": _primary_signals(exp),
                 "members": ring["members"],
                 "estimated_exposure_gmv": exposure_gmv,
-                "analyst_decision": decision,
+                "analyst_decision": None,
                 "explanation": exp,
             }
             out[category].append(ring_obj)
 
-    # Compute total flagged exposure at risk (active un-dismissed risks)
+    _recompute_status_summary(out)
+
+    out["flagged"].sort(key=lambda r: r["ring_score"], reverse=True)
+    out["needs_review"].sort(key=lambda r: r["ring_score"], reverse=True)
+    return out
+
+
+def _apply_decisions(run: dict) -> None:
+    """
+    Overlay analyst decisions onto a (freshly copied) detection result.
+
+    Decisions are applied at READ time, not baked into the cached detection —
+    so recording a decision no longer invalidates the whole detection cache
+    (a full pipeline re-run just to flip one ring's status label).
+    """
+    from api.routes.feedback import get_decision_for_ring
+
+    for category in ("flagged", "needs_review", "clean"):
+        for ring in run.get(category, []):
+            decision = get_decision_for_ring(str(ring["component_id"]))
+            ring["analyst_decision"] = decision
+            if decision:
+                if decision.get("action") == "CONFIRM_FRAUD":
+                    ring["status"] = "confirmed_fraud"
+                elif decision.get("action") == "DISMISS_FALSE_POSITIVE":
+                    ring["status"] = "dismissed_fp"
+
+
+def _recompute_status_summary(out: dict) -> None:
+    """Recompute the status-dependent operational summary (call after decisions overlay)."""
     active_flagged = [r for r in out["flagged"] if r["status"] != "dismissed_fp"]
     active_review = [r for r in out["needs_review"] if r["status"] == "needs_review"]
     confirmed_rings = [r for r in out["flagged"] + out["needs_review"] if r["status"] == "confirmed_fraud"]
@@ -151,16 +174,20 @@ def _compute_detection(data_dir: str) -> dict:
     out["operational_summary"]["active_review_count"] = len(active_review)
     out["operational_summary"]["confirmed_fraud_count"] = len(confirmed_rings)
 
-    out["flagged"].sort(key=lambda r: r["ring_score"], reverse=True)
-    out["needs_review"].sort(key=lambda r: r["ring_score"], reverse=True)
-    return out
-
 
 def run_detection(data_dir: str = DEFAULT_DATA_DIR) -> dict:
-    """Return a fresh, caller-safe copy of the cached detection result."""
+    """Return a fresh, caller-safe copy of the cached detection result.
+
+    Analyst decisions are overlaid on the copy at read time — the cached
+    detection itself stays decision-free, so recording a decision never
+    invalidates the cache.
+    """
     import copy
 
-    return copy.deepcopy(_cached_run_detection(data_dir))
+    result = copy.deepcopy(_cached_run_detection(data_dir))
+    _apply_decisions(result)
+    _recompute_status_summary(result)
+    return result
 
 
 def ring_list(data_dir: str = DEFAULT_DATA_DIR) -> list[dict]:

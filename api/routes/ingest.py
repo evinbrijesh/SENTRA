@@ -46,8 +46,12 @@ def _extract_zip(zip_path: Path) -> Path:
     return dest
 
 
-def _load_with_degradation(batch_dir: Path, batch_id: str) -> dict:
-    """Run loader against live DBs when available; degrade to CSV-only otherwise."""
+def _load_with_degradation(batch_dir: Path, batch_id: str, csvs: dict | None = None) -> dict:
+    """Run loader against live DBs when available; degrade to CSV-only otherwise.
+
+    `csvs` passes the already-parsed DataFrames through so the batch is not
+    parsed from disk a second time (the route validates them first).
+    """
     import os
     import api.db as db
 
@@ -73,6 +77,7 @@ def _load_with_degradation(batch_dir: Path, batch_id: str) -> dict:
         batch=batch_id,
         skip_postgres=pg_conn is None,
         skip_neo4j=driver is None,
+        csvs=csvs,
     )
 
     if pg_conn is not None:
@@ -118,7 +123,8 @@ async def ingest(file: UploadFile = File(...)):
         tmp_path.unlink(missing_ok=True)
 
     batch_id = batch_dir.name
-    counts = _load_with_degradation(batch_dir, batch_id)
+    # Pass the parsed CSVs through so load_batch doesn't re-read them from disk.
+    counts = _load_with_degradation(batch_dir, batch_id, csvs=data)
 
     # Make it active so /rings reflects the new batch immediately.
     state.set_active_data_dir(str(batch_dir))

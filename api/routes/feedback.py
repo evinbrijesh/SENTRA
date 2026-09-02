@@ -184,8 +184,11 @@ def record_decision(ring_id: str, req: DecisionRequest):
         },
     )
 
-    # Invalidate detection cache so all endpoints reflect the updated status immediately
-    rings_service.clear_detection_cache()
+    # NOTE: no detection-cache invalidation here. Decisions are overlaid onto
+    # detection results at READ time (rings_service._apply_decisions), so a new
+    # decision is reflected on the next request without re-running the pipeline.
+    # Baking decisions into the cached detection forced a full re-detection on
+    # every analyst click — the dominant avoidable cost in the request path.
 
     return {
         "status": "ok",
