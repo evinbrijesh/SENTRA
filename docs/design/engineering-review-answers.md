@@ -33,7 +33,7 @@ extractor is already decoupled from the graph backend so the migration path is c
 `build_graph` creates an edge between *every pair* of accounts sharing a device/IP
 (`for i in range(len(account_ids)): for j in range(i+1, ...)`), i.e. O(k²) per shared
 entity. A carrier-NAT IP with 10,000 accounts → ~50M edges → one giant component →
-the 13-dim extractor computes features across 100k merged nodes and density /
+the 16-dim extractor computes features across 100k merged nodes and density /
 `max_possible` math collapses.
 
 **Mitigation (two guards):**

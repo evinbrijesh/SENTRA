@@ -36,6 +36,15 @@ These syndicates display distinct operational patterns:
 - **Closed-Loop Referral Gaming:** Account A refers Account B, B refers C, ..., and C refers A (or forms dense cyclic cliques) to trigger multi-hop referral kickbacks without bringing organic users.
 - **Micro-Transaction Infiltration:** Each account executes a single low-value payment (₹50–₹200) to satisfy "active account" conditions before harvesting referral credits.
 
+> **Note on referral loop mechanics:** Under action-based reward programs — e.g., the
+> Razorpay Partner Program pays the referral bonus on the referred party's first
+> *transaction*, not signup — a referral edge represents claimed credit for an account's
+> activation. Dormant (signed-up-but-never-transacted) accounts can therefore be referred
+> in any order, making closed loops obtainable in practice. The detection signal is the
+> **dense, self-contained referral structure** — referrals circulating inside the group
+> and never reaching organic users — not the literal cycle alone; `has_referral_cycle`
+> is one of sixteen features, and the model does not depend on it exclusively.
+
 ### 2.2 Why Transaction-Level Scoring Fails
 Traditional rule engines and transaction-level anomaly detectors fail because:
 1. **No Single Transaction Anomaly:** A ₹100 payment made via standard payment methods is indistinguishable from organic user activity.

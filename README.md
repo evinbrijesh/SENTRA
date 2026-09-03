@@ -43,7 +43,7 @@ overall and **detectable-cluster** recall (rings that actually form a cluster of
 | Set | Precision | Recall | Detectable-cluster recall | FP |
 |-----|-----------|--------|---------------------------|----|
 | Easy test (held-out) | 1.000 | 1.000 | 1.000 | 0 |
-| Hard test (held-out, subtle rings) | 1.000 | 0.444 | 1.000 | 0 |
+| Hard test (held-out, subtle rings) | 1.000 | 0.800 | 1.000 | 0 |
 
 Obvious rings are caught with zero false positives. Subtle "hard" rings fragment into
 small components (only 50% device / 40% IP overlap), so the *few* members that form no
@@ -77,7 +77,7 @@ is caught. The rule-based baseline, by contrast, floods review with false positi
         │  - graph_queries: connected components on   │
         │    shared device/IP + referral-cycle density │
         │  - temporal: signup-window clustering        │
-        │  - features: 13-dim component vector         │
+        │  - features: 16-dim component vector         │
         │  - ML classifier: RandomForest/XGBoost        │
         │  - explainability: SHAP + plain-language       │
         └───────────────────┬───────────────────────┘
